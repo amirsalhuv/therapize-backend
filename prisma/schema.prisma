@@ -1,0 +1,771 @@
+// Therapize - Remote Therapy Platform
+// Prisma Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserRole {
+  PATIENT
+  THERAPIST
+  LEAD_THERAPIST
+  ADMIN
+  OWNER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum EpisodeStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum ContinuationDecision {
+  EXTEND
+  MAINTENANCE
+  DISCHARGE
+  PENDING
+}
+
+enum SessionStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  MISSED
+  CANCELLED
+}
+
+enum DocumentType {
+  PDF
+  IMAGE
+  VIDEO
+  OTHER
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+enum Locale {
+  EN
+  HE
+}
+
+// ============================================
+// USER & AUTHENTICATION
+// ============================================
+
+model User {
+  id                    String        @id @default(uuid())
+  email                 String        @unique
+  passwordHash          String        @map("password_hash")
+  phoneNumber           String?       @map("phone_number")
+  firstName             String        @map("first_name")
+  lastName              String        @map("last_name")
+  dateOfBirth           DateTime?     @map("date_of_birth")
+  gender                Gender?
+  avatarUrl             String?       @map("avatar_url")
+  locale                Locale        @default(EN)
+  timezone              String        @default("UTC")
+  status                UserStatus    @default(PENDING_VERIFICATION)
+  emailVerified         Boolean       @default(false) @map("email_verified")
+  emailVerifiedAt       DateTime?     @map("email_verified_at")
+  lastLoginAt           DateTime?     @map("last_login_at")
+  mfaEnabled            Boolean       @default(false) @map("mfa_enabled")
+  mfaSecret             String?       @map("mfa_secret")
+
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+  deletedAt             DateTime?     @map("deleted_at")
+
+  // Relations
+  roles                 UserRole[]
+  refreshTokens         RefreshToken[]
+  passwordResets        PasswordReset[]
+  patientProfile        PatientProfile?
+  therapistProfile      TherapistProfile?
+  auditLogs             AuditLog[]
+  sentMessages          Message[]       @relation("SentMessages")
+  threadParticipants    GroupThreadParticipant[]
+  threadInvitesSent     ThreadInvite[]  @relation("InvitesSent")
+  threadInvitesReceived ThreadInvite[]  @relation("InvitesReceived")
+
+  @@index([email])
+  @@index([status])
+  @@map("users")
+}
+
+model RefreshToken {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  token       String    @unique
+  expiresAt   DateTime  @map("expires_at")
+  deviceInfo  String?   @map("device_info")
+  ipAddress   String?   @map("ip_address")
+  isRevoked   Boolean   @default(false) @map("is_revoked")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+model PasswordReset {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  token       String    @unique
+  expiresAt   DateTime  @map("expires_at")
+  usedAt      DateTime? @map("used_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@map("password_resets")
+}
+
+// ============================================
+// PATIENT PROFILE
+// ============================================
+
+model PatientProfile {
+  id                    String          @id @default(uuid())
+  userId                String          @unique @map("user_id")
+  medicalRecordNumber   String?         @unique @map("medical_record_number")
+  emergencyContactName  String?         @map("emergency_contact_name")
+  emergencyContactPhone String?         @map("emergency_contact_phone")
+  insuranceProvider     String?         @map("insurance_provider")
+  insurancePolicyNumber String?         @map("insurance_policy_number")
+  primaryDiagnosis      String?         @map("primary_diagnosis")
+  notes                 String?
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  user                  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  programEpisodes       ProgramEpisode[]
+  patientPlans          PatientPlan[]
+  documents             MedicalDocument[]
+  householdMemberships  HouseholdMember[]
+  employerMemberships   EmployerMember[]
+
+  @@map("patient_profiles")
+}
+
+// ============================================
+// THERAPIST PROFILE
+// ============================================
+
+model TherapistProfile {
+  id                    String          @id @default(uuid())
+  userId                String          @unique @map("user_id")
+  licenseNumber         String?         @map("license_number")
+  licenseState          String?         @map("license_state")
+  specializations       String[]
+  bio                   String?
+  yearsOfExperience     Int?            @map("years_of_experience")
+  isLeadTherapist       Boolean         @default(false) @map("is_lead_therapist")
+  maxPatients           Int             @default(50) @map("max_patients")
+  acceptingNewPatients  Boolean         @default(true) @map("accepting_new_patients")
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  user                  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  programEpisodes       ProgramEpisode[]
+  createdTemplates      ProgramTemplate[]
+  exerciseNotes         ExercisePatientNote[]
+  assessmentVotes       AssessmentVote[]
+
+  @@map("therapist_profiles")
+}
+
+// ============================================
+// PROGRAM EPISODE (12-week engagement)
+// ============================================
+
+model ProgramEpisode {
+  id                    String              @id @default(uuid())
+  patientId             String              @map("patient_id")
+  therapistId           String              @map("therapist_id")
+  status                EpisodeStatus       @default(ACTIVE)
+  durationWeeks         Int                 @default(12) @map("duration_weeks")
+  currentWeek           Int                 @default(1) @map("current_week")
+  continuationDecision  ContinuationDecision @default(PENDING) @map("continuation_decision")
+  startDate             DateTime            @map("start_date")
+  expectedEndDate       DateTime            @map("expected_end_date")
+  actualEndDate         DateTime?           @map("actual_end_date")
+  phases                Json?               // Structured phases data
+  goals                 Json?               // Treatment goals
+  notes                 String?
+
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  patient               PatientProfile      @relation(fields: [patientId], references: [id])
+  therapist             TherapistProfile    @relation(fields: [therapistId], references: [id])
+  patientPlans          PatientPlan[]
+  sessions              Session[]
+  assessmentResults     AssessmentResult[]
+  groupThread           GroupThread?
+
+  @@index([patientId])
+  @@index([therapistId])
+  @@index([status])
+  @@map("program_episodes")
+}
+
+// ============================================
+// PROGRAM TEMPLATE (Library)
+// ============================================
+
+model ProgramTemplate {
+  id                    String          @id @default(uuid())
+  name                  String
+  nameHe                String?         @map("name_he")
+  description           String?
+  descriptionHe         String?         @map("description_he")
+  durationWeeks         Int             @map("duration_weeks")
+  category              String?
+  targetConditions      String[]        @map("target_conditions")
+  structure             Json            // Week-by-week structure
+  isPublished           Boolean         @default(false) @map("is_published")
+  version               Int             @default(1)
+
+  createdById           String          @map("created_by_id")
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  createdBy             TherapistProfile @relation(fields: [createdById], references: [id])
+  patientPlans          PatientPlan[]
+  exercises             Exercise[]
+
+  @@index([category])
+  @@index([isPublished])
+  @@map("program_templates")
+}
+
+// ============================================
+// PATIENT PLAN (Instance from template)
+// ============================================
+
+model PatientPlan {
+  id                    String          @id @default(uuid())
+  patientId             String          @map("patient_id")
+  episodeId             String          @map("episode_id")
+  templateId            String?         @map("template_id")
+  name                  String
+  customizations        Json?           // Patient-specific modifications
+  startDate             DateTime        @map("start_date")
+  endDate               DateTime?       @map("end_date")
+  isActive              Boolean         @default(true) @map("is_active")
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  patient               PatientProfile  @relation(fields: [patientId], references: [id])
+  episode               ProgramEpisode  @relation(fields: [episodeId], references: [id])
+  template              ProgramTemplate? @relation(fields: [templateId], references: [id])
+  sessions              Session[]
+
+  @@index([patientId])
+  @@index([episodeId])
+  @@map("patient_plans")
+}
+
+// ============================================
+// SESSION (Daily scheduled activity)
+// ============================================
+
+model Session {
+  id                    String          @id @default(uuid())
+  episodeId             String          @map("episode_id")
+  planId                String?         @map("plan_id")
+  scheduledDate         DateTime        @map("scheduled_date")
+  scheduledTime         DateTime?       @map("scheduled_time")
+  status                SessionStatus   @default(SCHEDULED)
+  startedAt             DateTime?       @map("started_at")
+  completedAt           DateTime?       @map("completed_at")
+  durationMinutes       Int?            @map("duration_minutes")
+  notes                 String?         // Patient free-text notes
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  episode               ProgramEpisode  @relation(fields: [episodeId], references: [id])
+  plan                  PatientPlan?    @relation(fields: [planId], references: [id])
+  feedback              SessionFeedback?
+  itemFeedbacks         SessionItemFeedback[]
+  sessionExercises      SessionExercise[]
+
+  @@index([episodeId])
+  @@index([scheduledDate])
+  @@index([status])
+  @@map("sessions")
+}
+
+// ============================================
+// SESSION FEEDBACK (Questionnaire answers)
+// ============================================
+
+model SessionFeedback {
+  id                    String          @id @default(uuid())
+  sessionId             String          @unique @map("session_id")
+  overallRating         Int?            @map("overall_rating") // 1-5
+  painNow               Int?            @map("pain_now") // 0-10
+  fatigueNow            Int?            @map("fatigue_now") // 0-10
+  confidence            Int?            // 1-5
+  newSymptoms           Boolean?        @map("new_symptoms")
+  newSymptomsDetails    String?         @map("new_symptoms_details")
+  questionnaireAnswers  Json?           @map("questionnaire_answers")
+  additionalNotes       String?         @map("additional_notes")
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  session               Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("session_feedbacks")
+}
+
+// ============================================
+// EXERCISE
+// ============================================
+
+model Exercise {
+  id                    String          @id @default(uuid())
+  templateId            String?         @map("template_id")
+  name                  String
+  nameHe                String?         @map("name_he")
+  description           String?
+  descriptionHe         String?         @map("description_he")
+  instructions          String?
+  instructionsHe        String?         @map("instructions_he")
+  mediaUrl              String?         @map("media_url")
+  mediaType             String?         @map("media_type")
+  durationMinutes       Int?            @map("duration_minutes")
+  repetitions           Int?
+  sets                  Int?
+  category              String?
+  difficulty            Int?            // 1-5
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  template              ProgramTemplate? @relation(fields: [templateId], references: [id])
+  itemFeedbacks         SessionItemFeedback[]
+  patientNotes          ExercisePatientNote[]
+  sessionExercises      SessionExercise[]
+
+  @@index([category])
+  @@map("exercises")
+}
+
+// ============================================
+// SESSION EXERCISE (Exercise in a session)
+// ============================================
+
+model SessionExercise {
+  id                    String          @id @default(uuid())
+  sessionId             String          @map("session_id")
+  exerciseId            String          @map("exercise_id")
+  orderIndex            Int             @map("order_index")
+  customInstructions    String?         @map("custom_instructions")
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+
+  // Relations
+  session               Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  exercise              Exercise        @relation(fields: [exerciseId], references: [id])
+
+  @@unique([sessionId, exerciseId])
+  @@map("session_exercises")
+}
+
+// ============================================
+// SESSION ITEM FEEDBACK (Exercise-level)
+// ============================================
+
+model SessionItemFeedback {
+  id                    String          @id @default(uuid())
+  sessionId             String          @map("session_id")
+  exerciseId            String          @map("exercise_id")
+  difficultyRating      Int?            @map("difficulty_rating") // 1-5
+  painImpact            String?         @map("pain_impact") // improved, same, worse
+  clarityRating         String?         @map("clarity_rating") // clear, not_clear
+  completed             Boolean         @default(false)
+  skipped               Boolean         @default(false)
+  skipReason            String?         @map("skip_reason")
+  notes                 String?
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  session               Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  exercise              Exercise        @relation(fields: [exerciseId], references: [id])
+
+  @@unique([sessionId, exerciseId])
+  @@map("session_item_feedbacks")
+}
+
+// ============================================
+// EXERCISE PATIENT NOTE (Therapist notes)
+// ============================================
+
+model ExercisePatientNote {
+  id                    String          @id @default(uuid())
+  exerciseId            String          @map("exercise_id")
+  therapistId           String          @map("therapist_id")
+  patientId             String          @map("patient_id")
+  note                  String
+  visibleToPatient      Boolean         @default(true) @map("visible_to_patient")
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  exercise              Exercise        @relation(fields: [exerciseId], references: [id])
+  therapist             TherapistProfile @relation(fields: [therapistId], references: [id])
+
+  @@index([exerciseId, patientId])
+  @@map("exercise_patient_notes")
+}
+
+// ============================================
+// MEDICAL DOCUMENTS
+// ============================================
+
+model MedicalDocument {
+  id                    String          @id @default(uuid())
+  patientId             String          @map("patient_id")
+  uploadedById          String          @map("uploaded_by_id")
+  fileName              String          @map("file_name")
+  fileType              DocumentType    @map("file_type")
+  fileSizeBytes         Int             @map("file_size_bytes")
+  mimeType              String          @map("mime_type")
+  storageKey            String          @map("storage_key") // S3/GCS key
+  description           String?
+  category              String?         // referral, imaging, discharge, other
+  documentDate          DateTime?       @map("document_date")
+  isConfidential        Boolean         @default(true) @map("is_confidential")
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+  deletedAt             DateTime?       @map("deleted_at")
+
+  // Relations
+  patient               PatientProfile  @relation(fields: [patientId], references: [id])
+  notes                 DocumentNote[]
+
+  @@index([patientId])
+  @@index([category])
+  @@map("medical_documents")
+}
+
+model DocumentNote {
+  id                    String          @id @default(uuid())
+  documentId            String          @map("document_id")
+  authorId              String          @map("author_id")
+  content               String
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  document              MedicalDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("document_notes")
+}
+
+// ============================================
+// MESSAGING
+// ============================================
+
+model GroupThread {
+  id                    String          @id @default(uuid())
+  name                  String?
+  episodeId             String?         @unique @map("episode_id")
+  isGroup               Boolean         @default(false) @map("is_group")
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  episode               ProgramEpisode? @relation(fields: [episodeId], references: [id])
+  participants          GroupThreadParticipant[]
+  messages              Message[]
+  invites               ThreadInvite[]
+
+  @@map("group_threads")
+}
+
+model GroupThreadParticipant {
+  id                    String          @id @default(uuid())
+  threadId              String          @map("thread_id")
+  userId                String          @map("user_id")
+  role                  String          @default("member") // admin, moderator, member
+  joinedAt              DateTime        @default(now()) @map("joined_at")
+  leftAt                DateTime?       @map("left_at")
+  lastReadAt            DateTime?       @map("last_read_at")
+  isMuted               Boolean         @default(false) @map("is_muted")
+
+  // Relations
+  thread                GroupThread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user                  User            @relation(fields: [userId], references: [id])
+
+  @@unique([threadId, userId])
+  @@map("group_thread_participants")
+}
+
+model Message {
+  id                    String          @id @default(uuid())
+  threadId              String          @map("thread_id")
+  senderId              String          @map("sender_id")
+  content               String
+  contentType           String          @default("text") @map("content_type")
+  isEdited              Boolean         @default(false) @map("is_edited")
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+  deletedAt             DateTime?       @map("deleted_at")
+
+  // Relations
+  thread                GroupThread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender                User            @relation("SentMessages", fields: [senderId], references: [id])
+
+  @@index([threadId])
+  @@index([senderId])
+  @@map("messages")
+}
+
+model ThreadInvite {
+  id                    String          @id @default(uuid())
+  threadId              String          @map("thread_id")
+  inviterId             String          @map("inviter_id")
+  inviteeId             String          @map("invitee_id")
+  status                InviteStatus    @default(PENDING)
+  requiresPatientApproval Boolean       @default(false) @map("requires_patient_approval")
+  expiresAt             DateTime        @map("expires_at")
+  respondedAt           DateTime?       @map("responded_at")
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+
+  // Relations
+  thread                GroupThread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  inviter               User            @relation("InvitesSent", fields: [inviterId], references: [id])
+  invitee               User            @relation("InvitesReceived", fields: [inviteeId], references: [id])
+
+  @@index([inviteeId, status])
+  @@map("thread_invites")
+}
+
+// ============================================
+// EMPLOYER & HOUSEHOLD ACCOUNTS
+// ============================================
+
+model EmployerAccount {
+  id                    String          @id @default(uuid())
+  name                  String
+  domain                String?         // For SSO domain matching
+  contactEmail          String          @map("contact_email")
+  contactPhone          String?         @map("contact_phone")
+  maxMembers            Int             @map("max_members")
+  coveragePolicy        String          @default("employee_only") @map("coverage_policy") // employee_only, employee_family
+  subsidyType           String          @default("full") @map("subsidy_type") // full, copay
+  copayAmount           Float?          @map("copay_amount")
+  isActive              Boolean         @default(true) @map("is_active")
+  contractStartDate     DateTime        @map("contract_start_date")
+  contractEndDate       DateTime?       @map("contract_end_date")
+  settings              Json?
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  members               EmployerMember[]
+
+  @@map("employer_accounts")
+}
+
+model EmployerMember {
+  id                    String          @id @default(uuid())
+  employerId            String          @map("employer_id")
+  patientId             String          @map("patient_id")
+  employeeId            String?         @map("employee_id") // External employee ID
+  department            String?
+  joinedAt              DateTime        @default(now()) @map("joined_at")
+  leftAt                DateTime?       @map("left_at")
+
+  // Relations
+  employer              EmployerAccount @relation(fields: [employerId], references: [id])
+  patient               PatientProfile  @relation(fields: [patientId], references: [id])
+
+  @@unique([employerId, patientId])
+  @@map("employer_members")
+}
+
+model HouseholdAccount {
+  id                    String          @id @default(uuid())
+  name                  String
+  primaryMemberId       String?         @map("primary_member_id")
+  maxMembers            Int             @default(6) @map("max_members")
+  discountTier          String?         @map("discount_tier") // Based on member count
+  isPrepaid             Boolean         @default(false) @map("is_prepaid")
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  members               HouseholdMember[]
+
+  @@map("household_accounts")
+}
+
+model HouseholdMember {
+  id                    String          @id @default(uuid())
+  householdId           String          @map("household_id")
+  patientId             String          @map("patient_id")
+  relationship          String?         // primary, spouse, child, parent, etc.
+  isPrimary             Boolean         @default(false) @map("is_primary")
+  joinedAt              DateTime        @default(now()) @map("joined_at")
+
+  // Relations
+  household             HouseholdAccount @relation(fields: [householdId], references: [id])
+  patient               PatientProfile   @relation(fields: [patientId], references: [id])
+
+  @@unique([householdId, patientId])
+  @@map("household_members")
+}
+
+// ============================================
+// ASSESSMENTS
+// ============================================
+
+model AssessmentCatalog {
+  id                    String          @id @default(uuid())
+  code                  String          @unique // PHQ-9, GAD-7, etc.
+  name                  String
+  nameHe                String?         @map("name_he")
+  description           String?
+  descriptionHe         String?         @map("description_he")
+  category              String?
+  questions             Json            // Assessment questions structure
+  scoringRules          Json            @map("scoring_rules")
+  interpretationGuide   Json?           @map("interpretation_guide")
+  howToScoreVideoUrl    String?         @map("how_to_score_video_url")
+  estimatedMinutes      Int?            @map("estimated_minutes")
+  isActive              Boolean         @default(true) @map("is_active")
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  results               AssessmentResult[]
+  votes                 AssessmentVote[]
+
+  @@map("assessment_catalogs")
+}
+
+model AssessmentResult {
+  id                    String          @id @default(uuid())
+  assessmentId          String          @map("assessment_id")
+  episodeId             String          @map("episode_id")
+  assessmentType        String          @default("baseline") @map("assessment_type") // baseline, mid, final
+  answers               Json
+  score                 Float?
+  interpretation        String?
+  completedAt           DateTime        @map("completed_at")
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+
+  // Relations
+  assessment            AssessmentCatalog @relation(fields: [assessmentId], references: [id])
+  episode               ProgramEpisode    @relation(fields: [episodeId], references: [id])
+
+  @@index([episodeId])
+  @@map("assessment_results")
+}
+
+model AssessmentVote {
+  id                    String          @id @default(uuid())
+  assessmentId          String          @map("assessment_id")
+  therapistId           String          @map("therapist_id")
+  isUseful              Boolean         @map("is_useful")
+  conditionTag          String?         @map("condition_tag") // Tag for which condition this is useful
+  comment               String?
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+
+  // Relations
+  assessment            AssessmentCatalog @relation(fields: [assessmentId], references: [id])
+  therapist             TherapistProfile  @relation(fields: [therapistId], references: [id])
+
+  @@unique([assessmentId, therapistId])
+  @@map("assessment_votes")
+}
+
+// ============================================
+// AUDIT LOG (HIPAA Compliance)
+// ============================================
+
+model AuditLog {
+  id                    String          @id @default(uuid())
+  userId                String?         @map("user_id")
+  action                String          // CREATE, READ, UPDATE, DELETE, LOGIN, LOGOUT, etc.
+  entityType            String          @map("entity_type")
+  entityId              String?         @map("entity_id")
+  oldValues             Json?           @map("old_values")
+  newValues             Json?           @map("new_values")
+  ipAddress             String?         @map("ip_address")
+  userAgent             String?         @map("user_agent")
+  correlationId         String?         @map("correlation_id")
+  metadata              Json?
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+
+  // Relations
+  user                  User?           @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
