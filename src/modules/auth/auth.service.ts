@@ -44,7 +44,7 @@ export class AuthService {
         phoneNumber: dto.phoneNumber,
         locale: dto.locale || 'EN',
         roles: ['PATIENT'],
-        status: 'ACTIVE', // In production, set to PENDING_VERIFICATION and send email
+        status: 'PENDING_VERIFICATION',
       },
       select: {
         id: true,
@@ -57,12 +57,24 @@ export class AuthService {
       },
     });
 
-    // Generate tokens
-    const tokens = await this.generateTokens(user.id, user.email, user.roles as Role[]);
+    // Create email verification token
+    const verificationToken = uuidv4();
+    await this.prisma.emailVerificationToken.create({
+      data: {
+        userId: user.id,
+        token: verificationToken,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+      },
+    });
+
+    // Log verification URL (in production, send email)
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    console.log(`[Email Verification] Send email to ${user.email}`);
+    console.log(`[Email Verification] URL: ${frontendUrl}/verify-email/${verificationToken}`);
 
     return {
       user,
-      ...tokens,
+      message: 'Registration successful. Please check your email to verify your account.',
     };
   }
 
@@ -83,6 +95,10 @@ export class AuthService {
 
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (user.status === 'PENDING_VERIFICATION') {
+      throw new UnauthorizedException('Please verify your email before logging in');
     }
 
     if (user.status !== 'ACTIVE') {
@@ -207,6 +223,80 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  async verifyEmail(token: string) {
+    const verificationToken = await this.prisma.emailVerificationToken.findUnique({
+      where: { token },
+      include: { user: true },
+    });
+
+    if (!verificationToken) {
+      throw new BadRequestException('Invalid verification token');
+    }
+
+    if (verificationToken.usedAt) {
+      throw new BadRequestException('Token has already been used');
+    }
+
+    if (verificationToken.expiresAt < new Date()) {
+      throw new BadRequestException('Verification token has expired');
+    }
+
+    // Update user and token
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: verificationToken.userId },
+        data: {
+          emailVerified: true,
+          emailVerifiedAt: new Date(),
+          status: 'ACTIVE',
+        },
+      }),
+      this.prisma.emailVerificationToken.update({
+        where: { id: verificationToken.id },
+        data: { usedAt: new Date() },
+      }),
+    ]);
+
+    return { message: 'Email verified successfully. You can now log in.' };
+  }
+
+  async resendVerificationEmail(email: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
+
+    if (!user) {
+      // Don't reveal if email exists
+      return { message: 'If the email exists, a verification link will be sent.' };
+    }
+
+    if (user.emailVerified) {
+      throw new BadRequestException('Email is already verified');
+    }
+
+    // Delete old tokens
+    await this.prisma.emailVerificationToken.deleteMany({
+      where: { userId: user.id },
+    });
+
+    // Create new token
+    const verificationToken = uuidv4();
+    await this.prisma.emailVerificationToken.create({
+      data: {
+        userId: user.id,
+        token: verificationToken,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+      },
+    });
+
+    // Log verification URL (in production, send email)
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    console.log(`[Email Verification] Resend email to ${user.email}`);
+    console.log(`[Email Verification] URL: ${frontendUrl}/verify-email/${verificationToken}`);
+
+    return { message: 'If the email exists, a verification link will be sent.' };
   }
 
   private async generateTokens(

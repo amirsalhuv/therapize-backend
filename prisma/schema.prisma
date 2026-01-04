@@ -107,6 +107,7 @@ model User {
   roles                 UserRole[]
   refreshTokens         RefreshToken[]
   passwordResets        PasswordReset[]
+  emailVerificationTokens EmailVerificationToken[]
   patientProfile        PatientProfile?
   therapistProfile      TherapistProfile?
   auditLogs             AuditLog[]
@@ -149,6 +150,20 @@ model PasswordReset {
 
   @@index([token])
   @@map("password_resets")
+}
+
+model EmailVerificationToken {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  token       String    @unique
+  expiresAt   DateTime  @map("expires_at")
+  usedAt      DateTime? @map("used_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@map("email_verification_tokens")
 }
 
 // ============================================

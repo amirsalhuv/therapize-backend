@@ -3,6 +3,7 @@ import {
   Post,
   Body,
   Get,
+  Param,
   UseGuards,
   Req,
   HttpCode,
@@ -80,5 +81,23 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'User profile' })
   async getMe(@CurrentUser('id') userId: string) {
     return this.authService.getMe(userId);
+  }
+
+  @Public()
+  @Get('verify-email/:token')
+  @ApiOperation({ summary: 'Verify email with token' })
+  @ApiResponse({ status: 200, description: 'Email verified successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired token' })
+  async verifyEmail(@Param('token') token: string) {
+    return this.authService.verifyEmail(token);
+  }
+
+  @Public()
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Resend verification email' })
+  @ApiResponse({ status: 200, description: 'Verification email sent' })
+  async resendVerification(@Body('email') email: string) {
+    return this.authService.resendVerificationEmail(email);
   }
 }
