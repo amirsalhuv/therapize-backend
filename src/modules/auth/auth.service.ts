@@ -34,7 +34,9 @@ export class AuthService {
     // Hash password
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
-    // Create user with PATIENT role by default
+    // Create user with specified role (defaults to PATIENT)
+    // TODO: Re-enable email verification when ready
+    const role = dto.role || 'PATIENT';
     const user = await this.prisma.user.create({
       data: {
         email: dto.email.toLowerCase(),
@@ -43,8 +45,10 @@ export class AuthService {
         lastName: dto.lastName,
         phoneNumber: dto.phoneNumber,
         locale: dto.locale || 'EN',
-        roles: ['PATIENT'],
-        status: 'PENDING_VERIFICATION',
+        roles: [role],
+        status: 'ACTIVE',
+        emailVerified: true,
+        emailVerifiedAt: new Date(),
       },
       select: {
         id: true,
@@ -57,24 +61,22 @@ export class AuthService {
       },
     });
 
-    // Create email verification token
-    const verificationToken = uuidv4();
-    await this.prisma.emailVerificationToken.create({
-      data: {
-        userId: user.id,
-        token: verificationToken,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
-      },
-    });
-
-    // Log verification URL (in production, send email)
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
-    console.log(`[Email Verification] Send email to ${user.email}`);
-    console.log(`[Email Verification] URL: ${frontendUrl}/verify-email/${verificationToken}`);
+    // TODO: Re-enable email verification when ready
+    // const verificationToken = uuidv4();
+    // await this.prisma.emailVerificationToken.create({
+    //   data: {
+    //     userId: user.id,
+    //     token: verificationToken,
+    //     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+    //   },
+    // });
+    // const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    // console.log(`[Email Verification] Send email to ${user.email}`);
+    // console.log(`[Email Verification] URL: ${frontendUrl}/verify-email/${verificationToken}`);
 
     return {
       user,
-      message: 'Registration successful. Please check your email to verify your account.',
+      message: 'Registration successful.',
     };
   }
 

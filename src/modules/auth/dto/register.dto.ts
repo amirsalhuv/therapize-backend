@@ -13,6 +13,11 @@ export enum Locale {
   HE = 'HE',
 }
 
+export enum RegisterRole {
+  PATIENT = 'PATIENT',
+  THERAPIST = 'THERAPIST',
+}
+
 export class RegisterDto {
   @ApiProperty({ example: 'john@example.com' })
   @IsEmail()
@@ -49,4 +54,9 @@ export class RegisterDto {
   @IsOptional()
   @IsEnum(Locale)
   locale?: Locale;
+
+  @ApiProperty({ enum: RegisterRole, default: RegisterRole.PATIENT, required: false })
+  @IsOptional()
+  @IsEnum(RegisterRole)
+  role?: RegisterRole;
 }
