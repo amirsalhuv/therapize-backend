@@ -3,15 +3,18 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../database';
-import { RegisterDto, LoginDto } from './dto';
+import { RegisterDto, LoginDto, RegisterPatientDto } from './dto';
 import { JwtPayload, JwtRefreshPayload } from '../../common/interfaces';
 import { Role } from '../../common/enums';
+import { InvitationsService } from '../invitations/invitations.service';
 
 @Injectable()
 export class AuthService {
@@ -19,6 +22,8 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    @Inject(forwardRef(() => InvitationsService))
+    private invitationsService: InvitationsService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -77,6 +82,87 @@ export class AuthService {
     return {
       user,
       message: 'Registration successful.',
+    };
+  }
+
+  async registerPatient(dto: RegisterPatientDto) {
+    // Check if user already exists
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: dto.email.toLowerCase() },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('Email already registered');
+    }
+
+    // Validate invitation token if provided
+    let invitedByTherapistId: string | null = null;
+    if (dto.invitationToken) {
+      const invitation = await this.invitationsService.validateToken(dto.invitationToken);
+      if (!invitation.valid) {
+        throw new BadRequestException('Invalid invitation token');
+      }
+      // Get therapist ID from invitation
+      const invitationRecord = await this.prisma.patientInvitation.findUnique({
+        where: { token: dto.invitationToken },
+      });
+      invitedByTherapistId = invitationRecord?.invitedByTherapistId ?? null;
+    }
+
+    // Hash password
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+
+    // Create user and patient profile in a transaction
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Create user
+      const user = await tx.user.create({
+        data: {
+          email: dto.email.toLowerCase(),
+          passwordHash,
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          phoneNumber: dto.phoneNumber,
+          gender: dto.gender,
+          locale: dto.locale || 'EN',
+          roles: ['PATIENT'],
+          status: 'ACTIVE',
+          emailVerified: true,
+          emailVerifiedAt: new Date(),
+        },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          roles: true,
+          locale: true,
+          createdAt: true,
+        },
+      });
+
+      // Create patient profile
+      await tx.patientProfile.create({
+        data: {
+          userId: user.id,
+          ageRange: dto.ageRange,
+          country: dto.country,
+          city: dto.city,
+          conditionDescription: dto.conditionDescription,
+          invitedByTherapistId,
+        },
+      });
+
+      return user;
+    });
+
+    // Mark invitation as used if provided
+    if (dto.invitationToken) {
+      await this.invitationsService.markAsUsed(dto.invitationToken, result.id);
+    }
+
+    return {
+      user: result,
+      message: 'Patient registration successful.',
     };
   }
 

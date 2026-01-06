@@ -8,6 +8,7 @@ import { UsersModule } from './modules/users/users.module';
 import { PatientsModule } from './modules/patients/patients.module';
 import { TherapistsModule } from './modules/therapists/therapists.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
+import { InvitationsModule } from './modules/invitations/invitations.module';
 import { JwtAuthGuard, RolesGuard } from './modules/auth/guards';
 
 @Module({
@@ -25,6 +26,7 @@ import { JwtAuthGuard, RolesGuard } from './modules/auth/guards';
     PatientsModule,
     TherapistsModule,
     SessionsModule,
+    InvitationsModule,
   ],
   controllers: [],
   providers: [

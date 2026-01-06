@@ -76,6 +76,20 @@ enum Locale {
   HE
 }
 
+enum AgeRange {
+  CHILD   // 0-12
+  TEEN    // 13-17
+  ADULT   // 18-64
+  SENIOR  // 65+
+}
+
+enum PatientInvitationStatus {
+  PENDING
+  USED
+  EXPIRED
+  CANCELLED
+}
+
 // ============================================
 // USER & AUTHENTICATION
 // ============================================
@@ -115,6 +129,8 @@ model User {
   threadParticipants    GroupThreadParticipant[]
   threadInvitesSent     ThreadInvite[]  @relation("InvitesSent")
   threadInvitesReceived ThreadInvite[]  @relation("InvitesReceived")
+  patientInvitationsSent PatientInvitation[] @relation("PatientInvitationsSent")
+  patientInvitationUsed  PatientInvitation?  @relation("PatientInvitationUsed")
 
   @@index([email])
   @@index([status])
@@ -167,6 +183,41 @@ model EmailVerificationToken {
 }
 
 // ============================================
+// PATIENT INVITATION
+// ============================================
+
+model PatientInvitation {
+  id                    String                   @id @default(uuid())
+  token                 String                   @unique
+  invitedByUserId       String                   @map("invited_by_user_id")
+  invitedByTherapistId  String?                  @map("invited_by_therapist_id")
+
+  // Pre-filled data (optional)
+  firstName             String?                  @map("first_name")
+  lastName              String?                  @map("last_name")
+  ageRange              AgeRange?                @map("age_range")
+  gender                Gender?
+  conditionDescription  String?                  @map("condition_description")
+
+  // Status tracking
+  status                PatientInvitationStatus  @default(PENDING)
+  expiresAt             DateTime                 @map("expires_at")
+  usedAt                DateTime?                @map("used_at")
+  usedByUserId          String?                  @unique @map("used_by_user_id")
+
+  createdAt             DateTime                 @default(now()) @map("created_at")
+
+  // Relations
+  invitedBy             User                     @relation("PatientInvitationsSent", fields: [invitedByUserId], references: [id])
+  usedBy                User?                    @relation("PatientInvitationUsed", fields: [usedByUserId], references: [id])
+
+  @@index([token])
+  @@index([invitedByUserId])
+  @@index([status])
+  @@map("patient_invitations")
+}
+
+// ============================================
 // PATIENT PROFILE
 // ============================================
 
@@ -181,17 +232,26 @@ model PatientProfile {
   primaryDiagnosis      String?         @map("primary_diagnosis")
   notes                 String?
 
+  // New fields for patient signup
+  ageRange              AgeRange?       @map("age_range")
+  country               String?
+  city                  String?
+  conditionDescription  String?         @map("condition_description")
+  invitedByTherapistId  String?         @map("invited_by_therapist_id")
+
   createdAt             DateTime        @default(now()) @map("created_at")
   updatedAt             DateTime        @updatedAt @map("updated_at")
 
   // Relations
   user                  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invitedByTherapist    TherapistProfile? @relation("InvitedPatients", fields: [invitedByTherapistId], references: [id])
   programEpisodes       ProgramEpisode[]
   patientPlans          PatientPlan[]
   documents             MedicalDocument[]
   householdMemberships  HouseholdMember[]
   employerMemberships   EmployerMember[]
 
+  @@index([invitedByTherapistId])
   @@map("patient_profiles")
 }
 
@@ -220,6 +280,7 @@ model TherapistProfile {
   createdTemplates      ProgramTemplate[]
   exerciseNotes         ExercisePatientNote[]
   assessmentVotes       AssessmentVote[]
+  invitedPatients       PatientProfile[] @relation("InvitedPatients")
 
   @@map("therapist_profiles")
 }

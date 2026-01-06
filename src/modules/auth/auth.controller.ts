@@ -13,7 +13,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { AuthGuard } from '@nestjs/passport';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
-import { RegisterDto, LoginDto, RefreshTokenDto } from './dto';
+import { RegisterDto, LoginDto, RefreshTokenDto, RegisterPatientDto } from './dto';
 import { Public, CurrentUser } from '../../common/decorators';
 
 @ApiTags('auth')
@@ -28,6 +28,16 @@ export class AuthController {
   @ApiResponse({ status: 409, description: 'Email already registered' })
   async register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
+  }
+
+  @Public()
+  @Post('register/patient')
+  @ApiOperation({ summary: 'Register a new patient with profile data' })
+  @ApiResponse({ status: 201, description: 'Patient registered successfully' })
+  @ApiResponse({ status: 409, description: 'Email already registered' })
+  @ApiResponse({ status: 400, description: 'Invalid invitation token' })
+  async registerPatient(@Body() dto: RegisterPatientDto) {
+    return this.authService.registerPatient(dto);
   }
 
   @Public()
