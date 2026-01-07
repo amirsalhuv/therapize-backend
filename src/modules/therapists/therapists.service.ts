@@ -71,6 +71,7 @@ export class TherapistsService {
       episodeId: e.id,
       patient: e.patient,
       currentWeek: e.currentWeek,
+      durationWeeks: e.durationWeeks,
       status: e.status,
     }));
   }
@@ -82,6 +83,13 @@ export class TherapistsService {
       include: {
         patient: { include: { user: { select: { firstName: true, lastName: true } } } },
       },
+    });
+  }
+
+  async getPrograms(therapistId: string) {
+    return this.prisma.programTemplate.findMany({
+      where: { createdById: therapistId },
+      orderBy: { createdAt: 'desc' },
     });
   }
 }

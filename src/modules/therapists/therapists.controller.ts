@@ -59,4 +59,11 @@ export class TherapistsController {
   getEpisodes(@Param('id') id: string) {
     return this.therapistsService.getEpisodes(id);
   }
+
+  @Get(':id/programs')
+  @Roles(Role.THERAPIST, Role.LEAD_THERAPIST, Role.ADMIN)
+  @ApiOperation({ summary: 'Get therapist program templates' })
+  getPrograms(@Param('id') id: string) {
+    return this.therapistsService.getPrograms(id);
+  }
 }
