@@ -96,23 +96,27 @@ export class AuthService {
     }
 
     // Validate invitation token if provided
-    let invitedByTherapistId: string | null = null;
+    let invitationRecord: {
+      id: string;
+      invitedByTherapistId: string | null;
+    } | null = null;
+
     if (dto.invitationToken) {
       const invitation = await this.invitationsService.validateToken(dto.invitationToken);
       if (!invitation.valid) {
         throw new BadRequestException('Invalid invitation token');
       }
-      // Get therapist ID from invitation
-      const invitationRecord = await this.prisma.patientInvitation.findUnique({
+      // Get invitation record
+      invitationRecord = await this.prisma.patientInvitation.findUnique({
         where: { token: dto.invitationToken },
+        select: { id: true, invitedByTherapistId: true },
       });
-      invitedByTherapistId = invitationRecord?.invitedByTherapistId ?? null;
     }
 
     // Hash password
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
-    // Create user and patient profile in a transaction
+    // Create user and update/create patient profile in a transaction
     const result = await this.prisma.$transaction(async (tx) => {
       // Create user
       const user = await tx.user.create({
@@ -140,17 +144,32 @@ export class AuthService {
         },
       });
 
-      // Create patient profile
-      await tx.patientProfile.create({
-        data: {
-          userId: user.id,
-          ageRange: dto.ageRange,
-          country: dto.country,
-          city: dto.city,
-          conditionDescription: dto.conditionDescription,
-          invitedByTherapistId,
-        },
-      });
+      if (invitationRecord) {
+        // Update existing PatientProfile (created when invitation was sent)
+        await tx.patientProfile.update({
+          where: { invitationId: invitationRecord.id },
+          data: {
+            userId: user.id,
+            status: 'REGISTERED',
+            ageRange: dto.ageRange,
+            country: dto.country,
+            city: dto.city,
+            conditionDescription: dto.conditionDescription,
+          },
+        });
+      } else {
+        // No invitation - create new patient profile (self-signup)
+        await tx.patientProfile.create({
+          data: {
+            userId: user.id,
+            status: 'REGISTERED',
+            ageRange: dto.ageRange,
+            country: dto.country,
+            city: dto.city,
+            conditionDescription: dto.conditionDescription,
+          },
+        });
+      }
 
       return user;
     });

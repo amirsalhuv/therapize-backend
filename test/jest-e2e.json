@@ -1,6 +1,7 @@
 {
   "moduleFileExtensions": ["js", "json", "ts"],
-  "rootDir": ".",
+  "rootDir": "..",
+  "roots": ["<rootDir>/test", "<rootDir>/../tests/backend"],
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
@@ -8,5 +9,8 @@
   },
   "transformIgnorePatterns": [
     "node_modules/(?!(uuid)/)"
-  ]
+  ],
+  "moduleNameMapper": {
+    "^@prisma/client$": "<rootDir>/node_modules/@prisma/client"
+  }
 }

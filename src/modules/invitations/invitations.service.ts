@@ -23,27 +23,44 @@ export class InvitationsService {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + expirationDays);
 
-    const invitation = await this.prisma.patientInvitation.create({
-      data: {
-        token,
-        invitedByUserId: userId,
-        invitedByTherapistId: therapistProfile?.id ?? null,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        ageRange: dto.ageRange,
-        gender: dto.gender,
-        conditionDescription: dto.conditionDescription,
-        expiresAt,
-      },
-      include: {
-        invitedBy: {
-          select: { id: true, firstName: true, lastName: true, email: true },
+    // Create invitation and patient profile in a transaction
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Create the invitation
+      const invitation = await tx.patientInvitation.create({
+        data: {
+          token,
+          invitedByUserId: userId,
+          invitedByTherapistId: therapistProfile?.id ?? null,
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          ageRange: dto.ageRange,
+          gender: dto.gender,
+          conditionDescription: dto.conditionDescription,
+          expiresAt,
         },
-      },
+        include: {
+          invitedBy: {
+            select: { id: true, firstName: true, lastName: true, email: true },
+          },
+        },
+      });
+
+      // Create PatientProfile with INVITED status (no user yet)
+      await tx.patientProfile.create({
+        data: {
+          invitationId: invitation.id,
+          invitedByTherapistId: therapistProfile?.id ?? null,
+          status: 'INVITED',
+          ageRange: dto.ageRange,
+          conditionDescription: dto.conditionDescription,
+        },
+      });
+
+      return invitation;
     });
 
     return {
-      ...invitation,
+      ...result,
       inviteLink: this.generateInviteLink(token),
     };
   }
@@ -148,6 +165,7 @@ export class InvitationsService {
   async cancel(id: string, userId: string) {
     const invitation = await this.prisma.patientInvitation.findUnique({
       where: { id },
+      include: { patientProfile: true },
     });
 
     if (!invitation) {
@@ -162,9 +180,19 @@ export class InvitationsService {
       throw new BadRequestException('Only pending invitations can be cancelled');
     }
 
-    return this.prisma.patientInvitation.update({
-      where: { id },
-      data: { status: 'CANCELLED' },
+    // Cancel invitation and delete the associated PatientProfile (since patient never registered)
+    return this.prisma.$transaction(async (tx) => {
+      // Delete PatientProfile if exists and has no user
+      if (invitation.patientProfile && !invitation.patientProfile.userId) {
+        await tx.patientProfile.delete({
+          where: { id: invitation.patientProfile.id },
+        });
+      }
+
+      return tx.patientInvitation.update({
+        where: { id },
+        data: { status: 'CANCELLED' },
+      });
     });
   }
 

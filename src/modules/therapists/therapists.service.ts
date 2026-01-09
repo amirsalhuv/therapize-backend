@@ -92,4 +92,132 @@ export class TherapistsService {
       orderBy: { createdAt: 'desc' },
     });
   }
+
+  async getDashboardPatients(therapistId: string) {
+    // Get all patients invited by this therapist, grouped by status
+    const patients = await this.prisma.patientProfile.findMany({
+      where: { invitedByTherapistId: therapistId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        invitation: {
+          select: {
+            id: true,
+            token: true,
+            firstName: true,
+            lastName: true,
+            status: true,
+            expiresAt: true,
+            createdAt: true,
+          },
+        },
+        programEpisodes: {
+          where: { therapistId },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            currentWeek: true,
+            durationWeeks: true,
+            startDate: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Group by status
+    const invited = patients.filter((p) => p.status === 'INVITED');
+    const registered = patients.filter((p) => p.status === 'REGISTERED');
+    const pendingPayment = patients.filter((p) => p.status === 'PENDING_PAYMENT');
+    const pendingScheduling = patients.filter((p) => p.status === 'PENDING_SCHEDULING');
+    const active = patients.filter((p) => p.status === 'ACTIVE');
+    const completed = patients.filter((p) => p.status === 'COMPLETED');
+    const discharged = patients.filter((p) => p.status === 'DISCHARGED');
+    const paused = patients.filter((p) => p.status === 'PAUSED');
+
+    // Generate invite links for INVITED patients
+    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const invitedWithLinks = invited.map((p) => ({
+      ...p,
+      inviteLink: p.invitation ? `${baseUrl}/signup/patient/invited/${p.invitation.token}` : null,
+    }));
+
+    return {
+      active: active.map((p) => this.formatPatientForDashboard(p)),
+      pending: {
+        invited: invitedWithLinks.map((p) => this.formatPendingPatient(p)),
+        registered: registered.map((p) => this.formatPendingPatient(p)),
+        pendingPayment: pendingPayment.map((p) => this.formatPendingPatient(p)),
+        pendingScheduling: pendingScheduling.map((p) => this.formatPendingPatient(p)),
+      },
+      completed: completed.map((p) => this.formatPatientForDashboard(p)),
+      paused: paused.map((p) => this.formatPatientForDashboard(p)),
+      discharged: discharged.map((p) => this.formatPatientForDashboard(p)),
+      stats: {
+        totalInvited: invited.length,
+        totalRegistered: registered.length,
+        totalPendingPayment: pendingPayment.length,
+        totalPendingScheduling: pendingScheduling.length,
+        totalActive: active.length,
+        totalCompleted: completed.length,
+        totalPaused: paused.length,
+        totalDischarged: discharged.length,
+      },
+    };
+  }
+
+  private formatPatientForDashboard(patient: any) {
+    const episode = patient.programEpisodes?.[0];
+    return {
+      id: patient.id,
+      status: patient.status,
+      user: patient.user,
+      ageRange: patient.ageRange,
+      country: patient.country,
+      city: patient.city,
+      conditionDescription: patient.conditionDescription,
+      createdAt: patient.createdAt,
+      episode: episode
+        ? {
+            id: episode.id,
+            status: episode.status,
+            currentWeek: episode.currentWeek,
+            durationWeeks: episode.durationWeeks,
+            startDate: episode.startDate,
+          }
+        : null,
+    };
+  }
+
+  private formatPendingPatient(patient: any) {
+    return {
+      id: patient.id,
+      status: patient.status,
+      user: patient.user,
+      // For INVITED patients, use invitation data
+      firstName: patient.user?.firstName || patient.invitation?.firstName,
+      lastName: patient.user?.lastName || patient.invitation?.lastName,
+      email: patient.user?.email,
+      ageRange: patient.ageRange,
+      conditionDescription: patient.conditionDescription,
+      createdAt: patient.createdAt,
+      invitation: patient.invitation
+        ? {
+            id: patient.invitation.id,
+            status: patient.invitation.status,
+            expiresAt: patient.invitation.expiresAt,
+            createdAt: patient.invitation.createdAt,
+          }
+        : null,
+      inviteLink: (patient as any).inviteLink || null,
+    };
+  }
 }

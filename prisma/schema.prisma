@@ -90,6 +90,41 @@ enum PatientInvitationStatus {
   CANCELLED
 }
 
+enum FirstSessionFormStatus {
+  DRAFT
+  COMPLETED
+}
+
+enum PatientStatus {
+  INVITED              // Invitation sent, patient not yet registered
+  REGISTERED           // Registered but no program selected
+  PENDING_PAYMENT      // Program selected, awaiting payment (DEPRECATED - use RelationshipStatus)
+  PENDING_SCHEDULING   // Paid, needs first visit scheduled (DEPRECATED - use RelationshipStatus)
+  ACTIVE               // In active treatment (DEPRECATED - use RelationshipStatus)
+  COMPLETED            // Program completed (DEPRECATED - use RelationshipStatus)
+  DISCHARGED           // Therapy complete (DEPRECATED - use RelationshipStatus)
+  PAUSED               // Treatment temporarily paused (DEPRECATED - use RelationshipStatus)
+}
+
+// Status for patient-therapist relationships (per-therapist tracking)
+enum RelationshipStatus {
+  PENDING_PAYMENT           // Patient selected program, awaiting payment
+  PENDING_SCHEDULING        // Paid, needs first visit scheduled
+  SCHEDULED_FIRST_MEETING   // First meeting scheduled, waiting to happen
+  ACTIVE                    // In active treatment
+  COMPLETED                 // Program completed
+  DISCHARGED                // Therapy complete
+  PAUSED                    // Treatment temporarily paused
+}
+
+// Therapy discipline types
+enum TherapyDiscipline {
+  PT    // Physical Therapy
+  OT    // Occupational Therapy
+  ST    // Speech Therapy
+  MT    // Mental Therapy / Psychology
+}
+
 // ============================================
 // USER & AUTHENTICATION
 // ============================================
@@ -210,6 +245,7 @@ model PatientInvitation {
   // Relations
   invitedBy             User                     @relation("PatientInvitationsSent", fields: [invitedByUserId], references: [id])
   usedBy                User?                    @relation("PatientInvitationUsed", fields: [usedByUserId], references: [id])
+  patientProfile        PatientProfile?          // Created when invitation is sent
 
   @@index([token])
   @@index([invitedByUserId])
@@ -223,7 +259,7 @@ model PatientInvitation {
 
 model PatientProfile {
   id                    String          @id @default(uuid())
-  userId                String          @unique @map("user_id")
+  userId                String?         @unique @map("user_id") // Optional until patient registers
   medicalRecordNumber   String?         @unique @map("medical_record_number")
   emergencyContactName  String?         @map("emergency_contact_name")
   emergencyContactPhone String?         @map("emergency_contact_phone")
@@ -232,6 +268,9 @@ model PatientProfile {
   primaryDiagnosis      String?         @map("primary_diagnosis")
   notes                 String?
 
+  // Patient lifecycle status
+  status                PatientStatus   @default(INVITED)
+
   // New fields for patient signup
   ageRange              AgeRange?       @map("age_range")
   country               String?
@@ -239,19 +278,25 @@ model PatientProfile {
   conditionDescription  String?         @map("condition_description")
   invitedByTherapistId  String?         @map("invited_by_therapist_id")
 
+  // Link to invitation (for tracking)
+  invitationId          String?         @unique @map("invitation_id")
+
   createdAt             DateTime        @default(now()) @map("created_at")
   updatedAt             DateTime        @updatedAt @map("updated_at")
 
   // Relations
-  user                  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                  User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
   invitedByTherapist    TherapistProfile? @relation("InvitedPatients", fields: [invitedByTherapistId], references: [id])
+  invitation            PatientInvitation? @relation(fields: [invitationId], references: [id])
   programEpisodes       ProgramEpisode[]
   patientPlans          PatientPlan[]
   documents             MedicalDocument[]
   householdMemberships  HouseholdMember[]
   employerMemberships   EmployerMember[]
+  therapistRelationships PatientTherapistRelationship[]
 
   @@index([invitedByTherapistId])
+  @@index([status])
   @@map("patient_profiles")
 }
 
@@ -262,6 +307,7 @@ model PatientProfile {
 model TherapistProfile {
   id                    String          @id @default(uuid())
   userId                String          @unique @map("user_id")
+  discipline            TherapyDiscipline? // Primary discipline (PT, OT, ST, MT)
   licenseNumber         String?         @map("license_number")
   licenseState          String?         @map("license_state")
   specializations       String[]
@@ -281,8 +327,37 @@ model TherapistProfile {
   exerciseNotes         ExercisePatientNote[]
   assessmentVotes       AssessmentVote[]
   invitedPatients       PatientProfile[] @relation("InvitedPatients")
+  patientRelationships  PatientTherapistRelationship[]
 
   @@map("therapist_profiles")
+}
+
+// ============================================
+// PATIENT-THERAPIST RELATIONSHIP
+// ============================================
+
+model PatientTherapistRelationship {
+  id                  String              @id @default(uuid())
+  patientId           String              @map("patient_id")
+  therapistId         String              @map("therapist_id")
+  discipline          TherapyDiscipline
+  status              RelationshipStatus  @default(PENDING_PAYMENT)
+  isInvitingTherapist Boolean             @default(false) @map("is_inviting_therapist")
+  scheduledAt         DateTime?           @map("scheduled_at")  // First meeting scheduled time
+
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  patient             PatientProfile      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  therapist           TherapistProfile    @relation(fields: [therapistId], references: [id])
+  programEpisode      ProgramEpisode?
+
+  @@unique([patientId, therapistId])
+  @@index([patientId])
+  @@index([therapistId])
+  @@index([status])
+  @@map("patient_therapist_relationships")
 }
 
 // ============================================
@@ -293,6 +368,7 @@ model ProgramEpisode {
   id                    String              @id @default(uuid())
   patientId             String              @map("patient_id")
   therapistId           String              @map("therapist_id")
+  relationshipId        String?             @unique @map("relationship_id")
   status                EpisodeStatus       @default(ACTIVE)
   durationWeeks         Int                 @default(12) @map("duration_weeks")
   currentWeek           Int                 @default(1) @map("current_week")
@@ -310,15 +386,42 @@ model ProgramEpisode {
   // Relations
   patient               PatientProfile      @relation(fields: [patientId], references: [id])
   therapist             TherapistProfile    @relation(fields: [therapistId], references: [id])
+  relationship          PatientTherapistRelationship? @relation(fields: [relationshipId], references: [id])
   patientPlans          PatientPlan[]
   sessions              Session[]
   assessmentResults     AssessmentResult[]
   groupThread           GroupThread?
+  firstSessionForm      FirstSessionForm?
 
   @@index([patientId])
   @@index([therapistId])
   @@index([status])
   @@map("program_episodes")
+}
+
+// ============================================
+// FIRST SESSION FORM
+// ============================================
+
+model FirstSessionForm {
+  id                    String                  @id @default(uuid())
+  episodeId             String                  @unique @map("episode_id")
+  status                FirstSessionFormStatus  @default(DRAFT)
+
+  // Flexible JSON fields for form data
+  basicData             Json?                   @map("basic_data")
+  performanceTests      Json?                   @map("performance_tests")
+  therapyGoals          Json?                   @map("therapy_goals")
+  onboarding            Json?
+
+  createdAt             DateTime                @default(now()) @map("created_at")
+  updatedAt             DateTime                @updatedAt @map("updated_at")
+  completedAt           DateTime?               @map("completed_at")
+
+  // Relations
+  episode               ProgramEpisode          @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@map("first_session_forms")
 }
 
 // ============================================
@@ -334,6 +437,8 @@ model ProgramTemplate {
   durationWeeks         Int             @map("duration_weeks")
   category              String?
   targetConditions      String[]        @map("target_conditions")
+  bodyParts             String[]        @map("body_parts")
+  searchTags            String[]        @map("search_tags")
   structure             Json            // Week-by-week structure
   isPublished           Boolean         @default(false) @map("is_published")
   version               Int             @default(1)

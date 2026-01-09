@@ -9,6 +9,9 @@ import { PatientsModule } from './modules/patients/patients.module';
 import { TherapistsModule } from './modules/therapists/therapists.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
+import { FirstSessionFormsModule } from './modules/first-session-forms/first-session-forms.module';
+import { PatientRelationshipsModule } from './modules/patient-relationships/patient-relationships.module';
+import { LibraryModule } from './modules/library/library.module';
 import { JwtAuthGuard, RolesGuard } from './modules/auth/guards';
 
 @Module({
@@ -27,6 +30,9 @@ import { JwtAuthGuard, RolesGuard } from './modules/auth/guards';
     TherapistsModule,
     SessionsModule,
     InvitationsModule,
+    FirstSessionFormsModule,
+    PatientRelationshipsModule,
+    LibraryModule,
   ],
   controllers: [],
   providers: [

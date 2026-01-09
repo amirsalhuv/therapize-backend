@@ -1,7 +1,9 @@
 import { Controller, Get, Post, Patch, Body, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { PatientsService } from './patients.service';
+import { PatientRelationshipsService } from '../patient-relationships/patient-relationships.service';
 import { CreatePatientProfileDto, UpdatePatientProfileDto } from './dto';
+import { SelectProgramsDto } from '../patient-relationships/dto';
 import { Roles, CurrentUser } from '../../common/decorators';
 import { Role } from '../../common/enums';
 
@@ -9,7 +11,10 @@ import { Role } from '../../common/enums';
 @ApiBearerAuth()
 @Controller('api/v1/patients')
 export class PatientsController {
-  constructor(private patientsService: PatientsService) {}
+  constructor(
+    private patientsService: PatientsService,
+    private relationshipsService: PatientRelationshipsService,
+  ) {}
 
   @Get()
   @Roles(Role.THERAPIST, Role.LEAD_THERAPIST, Role.ADMIN, Role.OWNER)
@@ -25,6 +30,30 @@ export class PatientsController {
   @ApiOperation({ summary: 'Get own patient profile' })
   getMyProfile(@CurrentUser('id') userId: string) {
     return this.patientsService.findByUserId(userId);
+  }
+
+  @Get('me/suggested-programs')
+  @Roles(Role.PATIENT)
+  @ApiOperation({ summary: 'Get suggested programs for current patient' })
+  async getMySuggestedPrograms(@CurrentUser('id') userId: string) {
+    const patient = await this.patientsService.findByUserId(userId);
+    return this.relationshipsService.getSuggestedPrograms(patient.id);
+  }
+
+  @Post('me/select-programs')
+  @Roles(Role.PATIENT)
+  @ApiOperation({ summary: 'Select programs for current patient' })
+  async selectMyPrograms(@CurrentUser('id') userId: string, @Body() dto: SelectProgramsDto) {
+    const patient = await this.patientsService.findByUserId(userId);
+    return this.relationshipsService.selectPrograms(patient.id, dto.disciplines);
+  }
+
+  @Get('me/relationships')
+  @Roles(Role.PATIENT)
+  @ApiOperation({ summary: 'Get current patient therapist relationships' })
+  async getMyRelationships(@CurrentUser('id') userId: string) {
+    const patient = await this.patientsService.findByUserId(userId);
+    return this.relationshipsService.findByPatient(patient.id);
   }
 
   @Get(':id')
@@ -67,5 +96,26 @@ export class PatientsController {
   @ApiOperation({ summary: 'Get patient sessions' })
   getSessions(@Param('id') id: string, @Query('limit') limit = 10) {
     return this.patientsService.getSessions(id, +limit);
+  }
+
+  @Get(':id/suggested-programs')
+  @Roles(Role.PATIENT)
+  @ApiOperation({ summary: 'Get suggested programs for patient' })
+  getSuggestedPrograms(@Param('id') id: string) {
+    return this.relationshipsService.getSuggestedPrograms(id);
+  }
+
+  @Post(':id/select-programs')
+  @Roles(Role.PATIENT)
+  @ApiOperation({ summary: 'Select programs for patient (creates relationships with auto-assigned therapists)' })
+  selectPrograms(@Param('id') id: string, @Body() dto: SelectProgramsDto) {
+    return this.relationshipsService.selectPrograms(id, dto.disciplines);
+  }
+
+  @Get(':id/relationships')
+  @Roles(Role.PATIENT, Role.THERAPIST, Role.LEAD_THERAPIST, Role.ADMIN)
+  @ApiOperation({ summary: 'Get patient therapist relationships' })
+  getRelationships(@Param('id') id: string) {
+    return this.relationshipsService.findByPatient(id);
   }
 }

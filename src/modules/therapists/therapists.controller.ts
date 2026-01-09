@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Patch, Body, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { TherapistsService } from './therapists.service';
+import { PatientRelationshipsService } from '../patient-relationships/patient-relationships.service';
 import { CreateTherapistProfileDto } from './dto';
 import { Roles, CurrentUser } from '../../common/decorators';
 import { Role } from '../../common/enums';
@@ -9,7 +10,10 @@ import { Role } from '../../common/enums';
 @ApiBearerAuth()
 @Controller('api/v1/therapists')
 export class TherapistsController {
-  constructor(private therapistsService: TherapistsService) {}
+  constructor(
+    private therapistsService: TherapistsService,
+    private relationshipsService: PatientRelationshipsService,
+  ) {}
 
   @Get()
   @Roles(Role.ADMIN, Role.OWNER, Role.LEAD_THERAPIST)
@@ -23,6 +27,14 @@ export class TherapistsController {
   @ApiOperation({ summary: 'Get own therapist profile' })
   getMyProfile(@CurrentUser('id') userId: string) {
     return this.therapistsService.findByUserId(userId);
+  }
+
+  @Get('me/dashboard-patients')
+  @Roles(Role.THERAPIST, Role.LEAD_THERAPIST)
+  @ApiOperation({ summary: 'Get dashboard patients grouped by lifecycle status' })
+  async getDashboardPatients(@CurrentUser('id') userId: string) {
+    const therapist = await this.therapistsService.findByUserId(userId);
+    return this.relationshipsService.getTherapistDashboard(therapist.id);
   }
 
   @Get(':id')
