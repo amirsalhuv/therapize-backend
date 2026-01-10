@@ -220,4 +220,89 @@ export class TherapistsService {
       inviteLink: (patient as any).inviteLink || null,
     };
   }
+
+  async getScheduledVisits(therapistId: string, startDate?: Date, endDate?: Date) {
+    // Get first meetings from PatientTherapistRelationship
+    const relationships = await this.prisma.patientTherapistRelationship.findMany({
+      where: {
+        therapistId,
+        scheduledAt: {
+          not: null,
+          ...(startDate && { gte: startDate }),
+          ...(endDate && { lte: endDate }),
+        },
+      },
+      include: {
+        patient: {
+          include: {
+            user: { select: { firstName: true, lastName: true, email: true } },
+          },
+        },
+      },
+      orderBy: { scheduledAt: 'asc' },
+    });
+
+    // Get regular sessions from Session (via episodes)
+    const sessions = await this.prisma.session.findMany({
+      where: {
+        episode: { therapistId },
+        scheduledDate: {
+          ...(startDate && { gte: startDate }),
+          ...(endDate && { lte: endDate }),
+        },
+      },
+      include: {
+        episode: {
+          include: {
+            patient: {
+              include: {
+                user: { select: { firstName: true, lastName: true, email: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { scheduledDate: 'asc' },
+    });
+
+    // Format first meetings
+    const firstMeetings = relationships.map((rel) => ({
+      id: rel.id,
+      type: 'FIRST_MEETING' as const,
+      scheduledDate: rel.scheduledAt,
+      status: rel.status,
+      patient: {
+        id: rel.patient.id,
+        firstName: rel.patient.user?.firstName,
+        lastName: rel.patient.user?.lastName,
+        email: rel.patient.user?.email,
+      },
+      discipline: rel.discipline,
+    }));
+
+    // Format regular sessions
+    const regularSessions = sessions.map((session) => ({
+      id: session.id,
+      type: 'SESSION' as const,
+      scheduledDate: session.scheduledDate,
+      scheduledTime: session.scheduledTime,
+      status: session.status,
+      patient: {
+        id: session.episode.patient.id,
+        firstName: session.episode.patient.user?.firstName,
+        lastName: session.episode.patient.user?.lastName,
+        email: session.episode.patient.user?.email,
+      },
+      episodeId: session.episodeId,
+    }));
+
+    // Combine and sort by date
+    const allVisits = [...firstMeetings, ...regularSessions].sort((a, b) => {
+      const dateA = new Date(a.scheduledDate!).getTime();
+      const dateB = new Date(b.scheduledDate!).getTime();
+      return dateA - dateB;
+    });
+
+    return allVisits;
+  }
 }

@@ -29,6 +29,22 @@ export class TherapistsController {
     return this.therapistsService.findByUserId(userId);
   }
 
+  @Get('me/scheduled-visits')
+  @Roles(Role.THERAPIST, Role.LEAD_THERAPIST)
+  @ApiOperation({ summary: 'Get scheduled visits for calendar view' })
+  async getScheduledVisits(
+    @CurrentUser('id') userId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const therapist = await this.therapistsService.findByUserId(userId);
+    return this.therapistsService.getScheduledVisits(
+      therapist.id,
+      startDate ? new Date(startDate) : undefined,
+      endDate ? new Date(endDate) : undefined,
+    );
+  }
+
   @Get('me/dashboard-patients')
   @Roles(Role.THERAPIST, Role.LEAD_THERAPIST)
   @ApiOperation({ summary: 'Get dashboard patients grouped by lifecycle status' })

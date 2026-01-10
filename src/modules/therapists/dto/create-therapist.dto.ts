@@ -1,7 +1,13 @@
-import { IsString, IsOptional, IsBoolean, IsInt, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsInt, IsArray, IsEnum } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { TherapyDiscipline } from '@prisma/client';
 
 export class CreateTherapistProfileDto {
+  @ApiProperty({ enum: TherapyDiscipline, required: false })
+  @IsOptional()
+  @IsEnum(TherapyDiscipline)
+  discipline?: TherapyDiscipline;
+
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
@@ -32,4 +38,19 @@ export class CreateTherapistProfileDto {
   @IsOptional()
   @IsBoolean()
   isLeadTherapist?: boolean;
+
+  @ApiProperty({ example: 'Israel', required: false })
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  @ApiProperty({ example: 'Tel Aviv', required: false })
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @ApiProperty({ default: true, required: false })
+  @IsOptional()
+  @IsBoolean()
+  acceptingNewPatients?: boolean;
 }

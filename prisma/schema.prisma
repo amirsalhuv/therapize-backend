@@ -316,6 +316,8 @@ model TherapistProfile {
   isLeadTherapist       Boolean         @default(false) @map("is_lead_therapist")
   maxPatients           Int             @default(50) @map("max_patients")
   acceptingNewPatients  Boolean         @default(true) @map("accepting_new_patients")
+  country               String?
+  city                  String?
 
   createdAt             DateTime        @default(now()) @map("created_at")
   updatedAt             DateTime        @updatedAt @map("updated_at")
