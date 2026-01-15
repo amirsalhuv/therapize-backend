@@ -1,0 +1,22 @@
+{
+  "emailAlreadyRegistered": "Email already registered",
+  "invalidInvitationToken": "Invalid invitation token",
+  "templateNotFound": "Template not found",
+  "patientNotFound": "Patient not found",
+  "therapistNotFound": "Therapist not found",
+  "userNotFound": "User not found",
+  "invalidCredentials": "Invalid credentials",
+  "pleaseVerifyEmail": "Please verify your email before logging in",
+  "accountNotActive": "Account is not active",
+  "accountSuspended": "Account has been suspended",
+  "verificationTokenExpired": "Verification token has expired",
+  "tokenAlreadyUsed": "Token has already been used",
+  "passwordValidation": "Password must contain uppercase, lowercase, number, and special character",
+  "sessionNotFound": "Session not found",
+  "exerciseNotFound": "Exercise not found",
+  "programNotFound": "Program not found",
+  "unauthorized": "Unauthorized access",
+  "forbidden": "You do not have permission to perform this action",
+  "invalidInput": "Invalid input provided",
+  "serverError": "An unexpected error occurred"
+}

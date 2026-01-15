@@ -150,7 +150,11 @@ export class FirstSessionFormsService {
         completedAt: new Date(),
       },
       include: {
-        episode: true,
+        episode: {
+          include: {
+            relationship: true,
+          },
+        },
       },
     });
 
@@ -161,6 +165,20 @@ export class FirstSessionFormsService {
         goals: therapyGoals as object,
       },
     });
+
+    // Update relationship status to ACTIVE if it was in SCHEDULED_FIRST_MEETING
+    if (updatedForm.episode?.relationshipId) {
+      await this.prisma.patientTherapistRelationship.update({
+        where: { id: updatedForm.episode.relationshipId },
+        data: { status: 'ACTIVE' },
+      });
+
+      // Also update the patient profile status to ACTIVE
+      await this.prisma.patientProfile.update({
+        where: { id: updatedForm.episode.patientId },
+        data: { status: 'ACTIVE' },
+      });
+    }
 
     return updatedForm;
   }

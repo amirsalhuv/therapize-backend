@@ -1,0 +1,22 @@
+{
+  "emailAlreadyRegistered": "האימייל כבר רשום במערכת",
+  "invalidInvitationToken": "טוקן הזמנה לא תקין",
+  "templateNotFound": "תבנית לא נמצאה",
+  "patientNotFound": "מטופל לא נמצא",
+  "therapistNotFound": "מטפל לא נמצא",
+  "userNotFound": "משתמש לא נמצא",
+  "invalidCredentials": "פרטי התחברות שגויים",
+  "pleaseVerifyEmail": "אנא אמת את האימייל לפני ההתחברות",
+  "accountNotActive": "החשבון אינו פעיל",
+  "accountSuspended": "החשבון הושעה",
+  "verificationTokenExpired": "טוקן האימות פג תוקף",
+  "tokenAlreadyUsed": "הטוקן כבר נוצל",
+  "passwordValidation": "הסיסמה חייבת להכיל אות גדולה, אות קטנה, מספר ותו מיוחד",
+  "sessionNotFound": "פגישה לא נמצאה",
+  "exerciseNotFound": "תרגיל לא נמצא",
+  "programNotFound": "תוכנית לא נמצאה",
+  "unauthorized": "גישה לא מורשית",
+  "forbidden": "אין לך הרשאה לבצע פעולה זו",
+  "invalidInput": "קלט לא תקין",
+  "serverError": "אירעה שגיאה לא צפויה"
+}

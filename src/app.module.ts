@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { ConfigModule } from './config/config.module';
 import { DatabaseModule } from './database';
+import { I18nModule } from './i18n';
 import { AuthModule } from './modules/auth';
 import { UsersModule } from './modules/users/users.module';
 import { PatientsModule } from './modules/patients/patients.module';
@@ -18,6 +19,7 @@ import { JwtAuthGuard, RolesGuard } from './modules/auth/guards';
   imports: [
     ConfigModule,
     DatabaseModule,
+    I18nModule,
     ThrottlerModule.forRoot([
       {
         ttl: parseInt(process.env.THROTTLE_TTL || '60000', 10),

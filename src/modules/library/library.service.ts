@@ -2,13 +2,22 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database';
 import { SearchLibraryDto } from './dto';
 import { Prisma } from '@prisma/client';
-import { BODY_PARTS, CONDITIONS, CATEGORIES } from '../../common/constants';
+import { BODY_PARTS, CONDITIONS, CATEGORIES, BilingualItem } from '../../common/constants';
+import { I18nService, Locale } from '../../i18n';
 
 @Injectable()
 export class LibraryService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private i18n: I18nService,
+  ) {}
 
-  async searchTemplates(dto: SearchLibraryDto) {
+  private localizeItems(items: BilingualItem[], locale: Locale): string[] {
+    const lang = locale === 'HE' ? 'he' : 'en';
+    return items.map((item) => item[lang]);
+  }
+
+  async searchTemplates(dto: SearchLibraryDto, locale: Locale = 'EN') {
     const { query, category, conditions, bodyParts, page = 1, limit = 20 } = dto;
 
     const where: Prisma.ProgramTemplateWhereInput = {
@@ -32,6 +41,8 @@ export class LibraryService {
       where.OR = [
         { name: { contains: query, mode: 'insensitive' } },
         { description: { contains: query, mode: 'insensitive' } },
+        { nameHe: { contains: query, mode: 'insensitive' } },
+        { descriptionHe: { contains: query, mode: 'insensitive' } },
         ...searchTerms.map((term) => ({
           targetConditions: { has: term },
         })),
@@ -67,10 +78,8 @@ export class LibraryService {
     return {
       templates: templates.map((t) => ({
         id: t.id,
-        name: t.name,
-        nameHe: t.nameHe,
-        description: t.description,
-        descriptionHe: t.descriptionHe,
+        name: this.i18n.localizeField(t, 'name', locale),
+        description: this.i18n.localizeField(t, 'description', locale),
         durationWeeks: t.durationWeeks,
         category: t.category,
         targetConditions: t.targetConditions,
@@ -88,7 +97,7 @@ export class LibraryService {
     };
   }
 
-  async getTemplate(id: string) {
+  async getTemplate(id: string, locale: Locale = 'EN') {
     const template = await this.prisma.programTemplate.findUnique({
       where: { id, isPublished: true },
       include: {
@@ -103,21 +112,24 @@ export class LibraryService {
     });
 
     if (!template) {
-      throw new NotFoundException('Template not found');
+      throw new NotFoundException(this.i18n.translate('errors.templateNotFound', locale));
     }
 
     return {
       id: template.id,
-      name: template.name,
-      nameHe: template.nameHe,
-      description: template.description,
-      descriptionHe: template.descriptionHe,
+      name: this.i18n.localizeField(template, 'name', locale),
+      description: this.i18n.localizeField(template, 'description', locale),
       durationWeeks: template.durationWeeks,
       category: template.category,
       targetConditions: template.targetConditions,
       bodyParts: template.bodyParts,
       structure: template.structure,
-      exercises: template.exercises,
+      exercises: template.exercises.map((ex) => ({
+        ...ex,
+        name: this.i18n.localizeField(ex, 'name', locale),
+        description: this.i18n.localizeField(ex, 'description', locale),
+        instructions: this.i18n.localizeField(ex, 'instructions', locale),
+      })),
       usageCount: template._count.patientPlans,
       createdBy: {
         firstName: template.createdBy.user.firstName,
@@ -180,15 +192,15 @@ export class LibraryService {
     return copy;
   }
 
-  getCategories() {
-    return CATEGORIES;
+  getCategories(locale: Locale = 'EN') {
+    return this.localizeItems(CATEGORIES, locale);
   }
 
-  getConditions() {
-    return CONDITIONS;
+  getConditions(locale: Locale = 'EN') {
+    return this.localizeItems(CONDITIONS, locale);
   }
 
-  getBodyParts() {
-    return BODY_PARTS;
+  getBodyParts(locale: Locale = 'EN') {
+    return this.localizeItems(BODY_PARTS, locale);
   }
 }
