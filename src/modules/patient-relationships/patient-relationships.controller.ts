@@ -34,4 +34,14 @@ export class PatientRelationshipsController {
   ) {
     return this.relationshipsService.scheduleFirstMeeting(id, new Date(dto.scheduledAt));
   }
+
+  @Post(':id/reschedule')
+  @Roles(Role.THERAPIST, Role.LEAD_THERAPIST)
+  @ApiOperation({ summary: 'Reschedule first meeting (updates scheduledAt)' })
+  rescheduleFirstMeeting(
+    @Param('id') id: string,
+    @Body() dto: ScheduleFirstMeetingDto,
+  ) {
+    return this.relationshipsService.rescheduleFirstMeeting(id, new Date(dto.scheduledAt));
+  }
 }

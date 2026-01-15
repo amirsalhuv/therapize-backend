@@ -170,10 +170,12 @@ export class PatientRelationshipsService {
 
   /**
    * Schedule first meeting - transitions to SCHEDULED_FIRST_MEETING
+   * Also creates a ProgramEpisode so the first session form can be created
    */
   async scheduleFirstMeeting(relationshipId: string, scheduledAt: Date) {
     const relationship = await this.prisma.patientTherapistRelationship.findUnique({
       where: { id: relationshipId },
+      include: { programEpisode: true },
     });
 
     if (!relationship) {
@@ -182,6 +184,28 @@ export class PatientRelationshipsService {
 
     if (relationship.status !== 'PENDING_SCHEDULING') {
       throw new BadRequestException('Relationship must be in PENDING_SCHEDULING status');
+    }
+
+    // Create episode if it doesn't exist
+    let episodeId = relationship.programEpisode?.id;
+    if (!episodeId) {
+      const startDate = new Date(scheduledAt);
+      const expectedEndDate = new Date(startDate);
+      expectedEndDate.setDate(expectedEndDate.getDate() + 12 * 7); // 12 weeks
+
+      const episode = await this.prisma.programEpisode.create({
+        data: {
+          patientId: relationship.patientId,
+          therapistId: relationship.therapistId,
+          relationshipId: relationship.id,
+          status: 'ACTIVE',
+          durationWeeks: 12,
+          currentWeek: 1,
+          startDate,
+          expectedEndDate,
+        },
+      });
+      episodeId = episode.id;
     }
 
     return this.prisma.patientTherapistRelationship.update({
@@ -201,6 +225,42 @@ export class PatientRelationshipsService {
             user: { select: { id: true, firstName: true, lastName: true } },
           },
         },
+        programEpisode: true,
+      },
+    });
+  }
+
+  /**
+   * Reschedule first meeting - updates scheduledAt without changing status
+   */
+  async rescheduleFirstMeeting(relationshipId: string, scheduledAt: Date) {
+    const relationship = await this.prisma.patientTherapistRelationship.findUnique({
+      where: { id: relationshipId },
+    });
+
+    if (!relationship) {
+      throw new NotFoundException('Relationship not found');
+    }
+
+    if (relationship.status !== 'SCHEDULED_FIRST_MEETING') {
+      throw new BadRequestException('Can only reschedule meetings in SCHEDULED_FIRST_MEETING status');
+    }
+
+    return this.prisma.patientTherapistRelationship.update({
+      where: { id: relationshipId },
+      data: { scheduledAt },
+      include: {
+        patient: {
+          include: {
+            user: { select: { id: true, firstName: true, lastName: true, email: true } },
+          },
+        },
+        therapist: {
+          include: {
+            user: { select: { id: true, firstName: true, lastName: true } },
+          },
+        },
+        programEpisode: true,
       },
     });
   }

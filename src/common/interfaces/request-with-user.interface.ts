@@ -6,6 +6,8 @@ export interface RequestUser {
   email: string;
   roles: Role[];
   refreshTokenId?: string;
+  therapistProfileId?: string;
+  patientProfileId?: string;
 }
 
 export interface RequestWithUser extends Request {
