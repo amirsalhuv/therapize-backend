@@ -52,6 +52,7 @@ enum ContinuationDecision {
 enum SessionStatus {
   SCHEDULED
   IN_PROGRESS
+  PAUSED
   COMPLETED
   MISSED
   CANCELLED

@@ -49,6 +49,27 @@ export class SessionsController {
     return this.sessionsService.startSession(id);
   }
 
+  @Post(':id/pause')
+  @Roles(Role.PATIENT)
+  @ApiOperation({ summary: 'Pause session' })
+  pauseSession(@Param('id') id: string) {
+    return this.sessionsService.pauseSession(id);
+  }
+
+  @Post(':id/resume')
+  @Roles(Role.PATIENT)
+  @ApiOperation({ summary: 'Resume paused session' })
+  resumeSession(@Param('id') id: string) {
+    return this.sessionsService.resumeSession(id);
+  }
+
+  @Post(':id/stop')
+  @Roles(Role.PATIENT)
+  @ApiOperation({ summary: 'Stop session and save progress' })
+  stopSession(@Param('id') id: string, @Body() body: { reason?: string }) {
+    return this.sessionsService.stopSession(id, body.reason);
+  }
+
   @Post(':id/complete')
   @Roles(Role.PATIENT)
   @ApiOperation({ summary: 'Complete session' })
