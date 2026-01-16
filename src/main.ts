@@ -2,10 +2,17 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import * as helmet from 'helmet';
+import * as express from 'express';
+import { join } from 'path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Serve static video files from ../Videos folder
+  const videosPath = join(process.cwd(), '..', 'Videos');
+  console.log('📹 Serving videos from:', videosPath);
+  app.use('/videos', express.static(videosPath));
 
   // Security headers
   app.use(helmet.default());

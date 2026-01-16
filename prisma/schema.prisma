@@ -126,6 +126,27 @@ enum TherapyDiscipline {
   MT    // Mental Therapy / Psychology
 }
 
+enum MilestoneStatus {
+  PENDING
+  COMPLETED
+  SKIPPED
+}
+
+enum MilestoneType {
+  BASELINE_ASSESSMENT
+  CHECKIN
+  MIDPOINT_ASSESSMENT
+  PROGRAM_COMPLETION
+  CUSTOM
+}
+
+enum MilestoneTriggerType {
+  MANUAL
+  VISIT_COMPLETED
+  FORM_COMPLETED
+  TIMELINE_BASED
+}
+
 // ============================================
 // USER & AUTHENTICATION
 // ============================================
@@ -331,6 +352,7 @@ model TherapistProfile {
   assessmentVotes       AssessmentVote[]
   invitedPatients       PatientProfile[] @relation("InvitedPatients")
   patientRelationships  PatientTherapistRelationship[]
+  milestoneTemplates    MilestoneTemplate[]
 
   @@map("therapist_profiles")
 }
@@ -395,6 +417,7 @@ model ProgramEpisode {
   assessmentResults     AssessmentResult[]
   groupThread           GroupThread?
   firstSessionForm      FirstSessionForm?
+  milestones            EpisodeMilestone[]
 
   @@index([patientId])
   @@index([therapistId])
@@ -425,6 +448,74 @@ model FirstSessionForm {
   episode               ProgramEpisode          @relation(fields: [episodeId], references: [id], onDelete: Cascade)
 
   @@map("first_session_forms")
+}
+
+// ============================================
+// MILESTONE TEMPLATE (Library)
+// ============================================
+
+model MilestoneTemplate {
+  id                    String                @id @default(uuid())
+  type                  MilestoneType
+  name                  String
+  nameHe                String?               @map("name_he")
+  description           String?
+  descriptionHe         String?               @map("description_he")
+  defaultWeek           Int                   @map("default_week")
+  isRecurring           Boolean               @default(false) @map("is_recurring")
+  recurrenceWeeks       Int?                  @map("recurrence_weeks")
+  triggerType           MilestoneTriggerType  @map("trigger_type")
+  triggerConfig         Json?                 @map("trigger_config")
+  isSystemDefault       Boolean               @default(false) @map("is_system_default")
+  createdByTherapistId  String?               @map("created_by_therapist_id")
+  discipline            TherapyDiscipline?
+
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+
+  // Relations
+  createdByTherapist    TherapistProfile?     @relation(fields: [createdByTherapistId], references: [id])
+  episodeMilestones     EpisodeMilestone[]
+
+  @@index([isSystemDefault])
+  @@index([discipline])
+  @@map("milestone_templates")
+}
+
+// ============================================
+// EPISODE MILESTONE (Instance per Episode)
+// ============================================
+
+model EpisodeMilestone {
+  id                    String                @id @default(uuid())
+  episodeId             String                @map("episode_id")
+  templateId            String?               @map("template_id")
+  type                  MilestoneType
+  name                  String
+  nameHe                String?               @map("name_he")
+  description           String?
+  descriptionHe         String?               @map("description_he")
+  targetWeek            Int                   @map("target_week")
+  targetDate            DateTime?             @map("target_date")
+  status                MilestoneStatus       @default(PENDING)
+  completedAt           DateTime?             @map("completed_at")
+  triggerType           MilestoneTriggerType  @map("trigger_type")
+  triggerConfig         Json?                 @map("trigger_config")
+  linkedSessionId       String?               @map("linked_session_id")
+  orderIndex            Int                   @default(0) @map("order_index")
+  therapistName         String?               @map("therapist_name")
+
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+
+  // Relations
+  episode               ProgramEpisode        @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  template              MilestoneTemplate?    @relation(fields: [templateId], references: [id])
+  linkedSession         Session?              @relation(fields: [linkedSessionId], references: [id])
+
+  @@index([episodeId])
+  @@index([status])
+  @@map("episode_milestones")
 }
 
 // ============================================
@@ -514,6 +605,7 @@ model Session {
   feedback              SessionFeedback?
   itemFeedbacks         SessionItemFeedback[]
   sessionExercises      SessionExercise[]
+  linkedMilestones      EpisodeMilestone[]
 
   @@index([episodeId])
   @@index([scheduledDate])

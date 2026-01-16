@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import * as bcrypt from 'bcrypt';
@@ -11,8 +11,184 @@ const prisma = new PrismaClient({ adapter });
 // Dev credentials - all passwords are "pass"
 const DEV_PASSWORD = 'pass';
 
+async function seedMilestoneTemplates() {
+  console.log('Seeding default milestone templates...\n');
+
+  const defaultTemplates = [
+    {
+      id: 'milestone-template-baseline',
+      type: 'BASELINE_ASSESSMENT' as const,
+      name: 'Baseline Assessment',
+      nameHe: 'הערכה בסיסית',
+      description: 'Initial evaluation to establish starting point and goals',
+      descriptionHe: 'הערכה ראשונית לקביעת נקודת מוצא ומטרות',
+      defaultWeek: 1,
+      isRecurring: false,
+      triggerType: 'FORM_COMPLETED' as const,
+      triggerConfig: { formType: 'FIRST_SESSION_FORM' },
+      isSystemDefault: true,
+    },
+    {
+      id: 'milestone-template-checkin-2',
+      type: 'CHECKIN' as const,
+      name: 'Bi-weekly Check-in',
+      nameHe: 'מעקב דו-שבועי',
+      description: 'Progress review and plan adjustment',
+      descriptionHe: 'סקירת התקדמות והתאמת תוכנית',
+      defaultWeek: 2,
+      isRecurring: true,
+      recurrenceWeeks: 2,
+      triggerType: 'VISIT_COMPLETED' as const,
+      triggerConfig: { visitTypes: ['VIDEO', 'IN_PERSON'] },
+      isSystemDefault: true,
+    },
+    {
+      id: 'milestone-template-midpoint',
+      type: 'MIDPOINT_ASSESSMENT' as const,
+      name: 'Midpoint Assessment',
+      nameHe: 'הערכת אמצע תוכנית',
+      description: 'Mid-program evaluation to measure progress and adjust goals',
+      descriptionHe: 'הערכה באמצע התוכנית למדידת התקדמות והתאמת מטרות',
+      defaultWeek: 6,
+      isRecurring: false,
+      triggerType: 'VISIT_COMPLETED' as const,
+      triggerConfig: { visitTypes: ['VIDEO', 'IN_PERSON'] },
+      isSystemDefault: true,
+    },
+    {
+      id: 'milestone-template-completion',
+      type: 'PROGRAM_COMPLETION' as const,
+      name: 'Program Completion',
+      nameHe: 'סיום תוכנית',
+      description: 'Final evaluation and decision on next steps',
+      descriptionHe: 'הערכה סופית והחלטה על המשך',
+      defaultWeek: 12,
+      isRecurring: false,
+      triggerType: 'MANUAL' as const,
+      triggerConfig: Prisma.JsonNull,
+      isSystemDefault: true,
+    },
+  ];
+
+  for (const template of defaultTemplates) {
+    await prisma.milestoneTemplate.upsert({
+      where: { id: template.id },
+      update: {
+        name: template.name,
+        nameHe: template.nameHe,
+        description: template.description,
+        descriptionHe: template.descriptionHe,
+        defaultWeek: template.defaultWeek,
+        isRecurring: template.isRecurring,
+        recurrenceWeeks: template.recurrenceWeeks,
+        triggerType: template.triggerType,
+        triggerConfig: template.triggerConfig as Prisma.InputJsonValue | typeof Prisma.JsonNull,
+      },
+      create: {
+        id: template.id,
+        type: template.type,
+        name: template.name,
+        nameHe: template.nameHe,
+        description: template.description,
+        descriptionHe: template.descriptionHe,
+        defaultWeek: template.defaultWeek,
+        isRecurring: template.isRecurring,
+        recurrenceWeeks: template.recurrenceWeeks,
+        triggerType: template.triggerType,
+        triggerConfig: template.triggerConfig as Prisma.InputJsonValue | typeof Prisma.JsonNull,
+        isSystemDefault: template.isSystemDefault,
+      },
+    });
+    console.log(`  Created milestone template: ${template.name}`);
+  }
+
+  console.log('');
+}
+
+async function initializeEpisodeMilestones(
+  episodeId: string,
+  startDate: Date,
+  durationWeeks: number,
+  therapistName: string,
+) {
+  // Check if milestones already exist
+  const existingCount = await prisma.episodeMilestone.count({
+    where: { episodeId },
+  });
+
+  if (existingCount > 0) {
+    console.log(`  Milestones already exist for episode ${episodeId}, skipping...`);
+    return;
+  }
+
+  const templates = await prisma.milestoneTemplate.findMany({
+    where: { isSystemDefault: true },
+    orderBy: { defaultWeek: 'asc' },
+  });
+
+  const milestoneData: Prisma.EpisodeMilestoneCreateManyInput[] = [];
+
+  for (const template of templates) {
+    if (template.isRecurring && template.recurrenceWeeks) {
+      // Create recurring milestones
+      for (
+        let week = template.defaultWeek;
+        week <= durationWeeks;
+        week += template.recurrenceWeeks
+      ) {
+        const targetDate = new Date(startDate);
+        targetDate.setDate(targetDate.getDate() + (week - 1) * 7);
+
+        milestoneData.push({
+          episodeId,
+          templateId: template.id,
+          type: template.type,
+          name: template.name,
+          nameHe: template.nameHe,
+          description: template.description,
+          descriptionHe: template.descriptionHe,
+          targetWeek: week,
+          targetDate,
+          triggerType: template.triggerType,
+          triggerConfig: template.triggerConfig || undefined,
+          status: 'PENDING',
+          orderIndex: week * 10,
+          therapistName,
+        });
+      }
+    } else {
+      // Create single milestone
+      const targetDate = new Date(startDate);
+      targetDate.setDate(targetDate.getDate() + (template.defaultWeek - 1) * 7);
+
+      milestoneData.push({
+        episodeId,
+        templateId: template.id,
+        type: template.type,
+        name: template.name,
+        nameHe: template.nameHe,
+        description: template.description,
+        descriptionHe: template.descriptionHe,
+        targetWeek: template.defaultWeek,
+        targetDate,
+        triggerType: template.triggerType,
+        triggerConfig: template.triggerConfig || undefined,
+        status: 'PENDING',
+        orderIndex: template.defaultWeek * 10,
+        therapistName,
+      });
+    }
+  }
+
+  await prisma.episodeMilestone.createMany({ data: milestoneData });
+  console.log(`  Created ${milestoneData.length} milestones for episode ${episodeId}`);
+}
+
 async function main() {
   const passwordHash = await bcrypt.hash(DEV_PASSWORD, 12);
+
+  // Seed milestone templates first
+  await seedMilestoneTemplates();
 
   console.log('Seeding development users...\n');
 
@@ -195,6 +371,10 @@ async function main() {
       },
     });
     console.log(`Created episode: Jane Smith -> Dr. Sarah (Week ${episode2.currentWeek}/${episode2.durationWeeks})`);
+
+    // Initialize milestones for demo episodes
+    await initializeEpisodeMilestones(episode1.id, episode1.startDate, episode1.durationWeeks, `${therapist1.firstName} ${therapist1.lastName}`);
+    await initializeEpisodeMilestones(episode2.id, episode2.startDate, episode2.durationWeeks, `${therapist1.firstName} ${therapist1.lastName}`);
 
     // Create Program Templates for Dr. Sarah
     const program1 = await prisma.programTemplate.upsert({

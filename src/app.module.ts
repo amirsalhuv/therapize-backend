@@ -13,6 +13,7 @@ import { InvitationsModule } from './modules/invitations/invitations.module';
 import { FirstSessionFormsModule } from './modules/first-session-forms/first-session-forms.module';
 import { PatientRelationshipsModule } from './modules/patient-relationships/patient-relationships.module';
 import { LibraryModule } from './modules/library/library.module';
+import { MilestonesModule } from './modules/milestones/milestones.module';
 import { JwtAuthGuard, RolesGuard } from './modules/auth/guards';
 
 @Module({
@@ -35,6 +36,7 @@ import { JwtAuthGuard, RolesGuard } from './modules/auth/guards';
     FirstSessionFormsModule,
     PatientRelationshipsModule,
     LibraryModule,
+    MilestonesModule,
   ],
   controllers: [],
   providers: [

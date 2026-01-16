@@ -1,10 +1,15 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../database';
 import { TherapyDiscipline } from '@prisma/client';
+import { MilestonesService } from '../milestones/milestones.service';
 
 @Injectable()
 export class PatientRelationshipsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => MilestonesService))
+    private milestonesService: MilestonesService,
+  ) {}
 
   /**
    * Get suggested programs for a patient based on their profile
@@ -206,6 +211,9 @@ export class PatientRelationshipsService {
         },
       });
       episodeId = episode.id;
+
+      // Initialize default milestones for the new episode
+      await this.milestonesService.initializeEpisodeMilestones(episodeId);
     }
 
     return this.prisma.patientTherapistRelationship.update({
