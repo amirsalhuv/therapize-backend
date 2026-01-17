@@ -11,10 +11,11 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../database';
-import { RegisterDto, LoginDto, RegisterPatientDto } from './dto';
+import { RegisterDto, LoginDto, RegisterPatientDto, RequestMagicLinkDto, AcceptFamilyInviteDto } from './dto';
 import { JwtPayload, JwtRefreshPayload } from '../../common/interfaces';
 import { Role } from '../../common/enums';
 import { InvitationsService } from '../invitations/invitations.service';
+import { randomBytes } from 'crypto';
 
 @Injectable()
 export class AuthService {
@@ -404,6 +405,241 @@ export class AuthService {
     console.log(`[Email Verification] URL: ${frontendUrl}/verify-email/${verificationToken}`);
 
     return { message: 'If the email exists, a verification link will be sent.' };
+  }
+
+  // ============================================
+  // MAGIC LINK AUTHENTICATION
+  // ============================================
+
+  async requestMagicLink(dto: RequestMagicLinkDto) {
+    if (!dto.email && !dto.phoneNumber) {
+      throw new BadRequestException('Either email or phone number is required');
+    }
+
+    // Find user by email or phone
+    const user = await this.prisma.user.findFirst({
+      where: dto.email
+        ? { email: dto.email.toLowerCase() }
+        : { phoneNumber: dto.phoneNumber },
+      select: {
+        id: true,
+        email: true,
+        phoneNumber: true,
+        roles: true,
+        status: true,
+      },
+    });
+
+    // Don't reveal if user exists
+    if (!user || user.status !== 'ACTIVE') {
+      return { message: 'If the account exists, a login link will be sent.' };
+    }
+
+    // Only allow magic link for family members
+    if (!user.roles.includes('FAMILY_MEMBER')) {
+      return { message: 'If the account exists, a login link will be sent.' };
+    }
+
+    // Delete old magic link tokens
+    await this.prisma.magicLinkToken.deleteMany({
+      where: { userId: user.id },
+    });
+
+    // Create new magic link token (15 minutes expiry)
+    const token = randomBytes(32).toString('hex');
+    await this.prisma.magicLinkToken.create({
+      data: {
+        userId: user.id,
+        token,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+      },
+    });
+
+    // Generate magic link URL
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const magicLink = `${frontendUrl}/auth/magic-link/${token}`;
+
+    // Log magic link (in production, send email/SMS)
+    console.log(`[Magic Link] Send to ${user.email || user.phoneNumber}`);
+    console.log(`[Magic Link] URL: ${magicLink}`);
+
+    return { message: 'If the account exists, a login link will be sent.' };
+  }
+
+  async verifyMagicLink(token: string, deviceInfo?: string, ipAddress?: string) {
+    const magicLinkToken = await this.prisma.magicLinkToken.findUnique({
+      where: { token },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            roles: true,
+            status: true,
+            locale: true,
+          },
+        },
+      },
+    });
+
+    if (!magicLinkToken) {
+      throw new BadRequestException('Invalid or expired magic link');
+    }
+
+    if (magicLinkToken.usedAt) {
+      throw new BadRequestException('This magic link has already been used');
+    }
+
+    if (magicLinkToken.expiresAt < new Date()) {
+      throw new BadRequestException('This magic link has expired');
+    }
+
+    if (!magicLinkToken.user || magicLinkToken.user.status !== 'ACTIVE') {
+      throw new BadRequestException('Account is not active');
+    }
+
+    // Mark token as used
+    await this.prisma.magicLinkToken.update({
+      where: { id: magicLinkToken.id },
+      data: { usedAt: new Date() },
+    });
+
+    // Update last login
+    await this.prisma.user.update({
+      where: { id: magicLinkToken.user.id },
+      data: { lastLoginAt: new Date() },
+    });
+
+    // Generate tokens
+    const tokens = await this.generateTokens(
+      magicLinkToken.user.id,
+      magicLinkToken.user.email,
+      magicLinkToken.user.roles as Role[],
+      deviceInfo,
+      ipAddress,
+    );
+
+    return {
+      user: {
+        id: magicLinkToken.user.id,
+        email: magicLinkToken.user.email,
+        firstName: magicLinkToken.user.firstName,
+        lastName: magicLinkToken.user.lastName,
+        roles: magicLinkToken.user.roles,
+        locale: magicLinkToken.user.locale,
+      },
+      ...tokens,
+    };
+  }
+
+  // ============================================
+  // FAMILY MEMBER INVITATION ACCEPTANCE
+  // ============================================
+
+  async acceptFamilyInvite(dto: AcceptFamilyInviteDto, deviceInfo?: string, ipAddress?: string) {
+    // Find and validate invitation
+    const invitation = await this.prisma.familyMemberInvitation.findUnique({
+      where: { token: dto.token },
+      include: {
+        familyMemberProfile: true,
+        patientProfile: {
+          include: {
+            user: { select: { firstName: true, lastName: true } },
+          },
+        },
+      },
+    });
+
+    if (!invitation) {
+      throw new BadRequestException('Invalid invitation token');
+    }
+
+    if (invitation.status === 'USED') {
+      throw new BadRequestException('This invitation has already been used');
+    }
+
+    if (invitation.status === 'CANCELLED') {
+      throw new BadRequestException('This invitation has been cancelled');
+    }
+
+    if (invitation.status === 'EXPIRED' || invitation.expiresAt < new Date()) {
+      if (invitation.status !== 'EXPIRED') {
+        await this.prisma.familyMemberInvitation.update({
+          where: { id: invitation.id },
+          data: { status: 'EXPIRED' },
+        });
+      }
+      throw new BadRequestException('This invitation has expired');
+    }
+
+    // Use provided names or fall back to invitation names
+    const firstName = dto.firstName || invitation.firstName;
+    const lastName = dto.lastName || invitation.lastName;
+
+    // Generate a unique email for family member (they may not have provided one)
+    const email = invitation.email || `family-${invitation.id}@therapize.local`;
+
+    // Create user and update family member profile in a transaction
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Create user
+      const user = await tx.user.create({
+        data: {
+          email: email.toLowerCase(),
+          passwordHash: '', // Empty password - uses magic link only
+          firstName,
+          lastName,
+          phoneNumber: invitation.phoneNumber,
+          roles: ['FAMILY_MEMBER'],
+          status: 'ACTIVE',
+          emailVerified: true,
+          emailVerifiedAt: new Date(),
+        },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          roles: true,
+          locale: true,
+        },
+      });
+
+      // Update family member profile with user ID
+      await tx.familyMemberProfile.update({
+        where: { id: invitation.familyMemberProfileId! },
+        data: { userId: user.id },
+      });
+
+      // Mark invitation as used
+      await tx.familyMemberInvitation.update({
+        where: { id: invitation.id },
+        data: {
+          status: 'USED',
+          usedAt: new Date(),
+        },
+      });
+
+      return user;
+    });
+
+    // Generate tokens for auto-login
+    const tokens = await this.generateTokens(
+      result.id,
+      result.email,
+      result.roles as Role[],
+      deviceInfo,
+      ipAddress,
+    );
+
+    return {
+      user: result,
+      patientName: invitation.patientProfile?.user
+        ? `${invitation.patientProfile.user.firstName} ${invitation.patientProfile.user.lastName}`
+        : null,
+      ...tokens,
+    };
   }
 
   private async generateTokens(

@@ -45,8 +45,8 @@ export class SessionsController {
   @Post(':id/start')
   @Roles(Role.PATIENT)
   @ApiOperation({ summary: 'Start session' })
-  startSession(@Param('id') id: string) {
-    return this.sessionsService.startSession(id);
+  startSession(@Param('id') id: string, @CurrentUser('id') userId: string) {
+    return this.sessionsService.startSession(id, userId, 'PATIENT');
   }
 
   @Post(':id/pause')

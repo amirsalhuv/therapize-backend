@@ -22,8 +22,9 @@ export class CreateSessionDto {
 }
 
 export class SessionFeedbackDto {
-  @ApiProperty({ minimum: 1, maximum: 5 })
-  overallRating: number;
+  @ApiProperty({ minimum: 1, maximum: 5, required: false })
+  @IsOptional()
+  overallRating?: number;
 
   @ApiProperty({ minimum: 0, maximum: 10, required: false })
   @IsOptional()
@@ -45,6 +46,10 @@ export class SessionFeedbackDto {
   @IsOptional()
   @IsString()
   newSymptomsDetails?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  questionnaireAnswers?: Record<string, any>;
 
   @ApiProperty({ required: false })
   @IsOptional()

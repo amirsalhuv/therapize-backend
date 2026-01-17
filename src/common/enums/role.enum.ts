@@ -4,4 +4,5 @@ export enum Role {
   LEAD_THERAPIST = 'LEAD_THERAPIST',
   ADMIN = 'ADMIN',
   OWNER = 'OWNER',
+  FAMILY_MEMBER = 'FAMILY_MEMBER',
 }

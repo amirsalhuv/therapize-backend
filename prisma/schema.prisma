@@ -19,6 +19,7 @@ enum UserRole {
   LEAD_THERAPIST
   ADMIN
   OWNER
+  FAMILY_MEMBER
 }
 
 enum UserStatus {
@@ -85,6 +86,13 @@ enum AgeRange {
 }
 
 enum PatientInvitationStatus {
+  PENDING
+  USED
+  EXPIRED
+  CANCELLED
+}
+
+enum FamilyMemberInvitationStatus {
   PENDING
   USED
   EXPIRED
@@ -188,6 +196,8 @@ model User {
   threadInvitesReceived ThreadInvite[]  @relation("InvitesReceived")
   patientInvitationsSent PatientInvitation[] @relation("PatientInvitationsSent")
   patientInvitationUsed  PatientInvitation?  @relation("PatientInvitationUsed")
+  familyMemberProfile   FamilyMemberProfile?
+  magicLinkTokens       MagicLinkToken[]
 
   @@index([email])
   @@index([status])
@@ -316,6 +326,8 @@ model PatientProfile {
   householdMemberships  HouseholdMember[]
   employerMemberships   EmployerMember[]
   therapistRelationships PatientTherapistRelationship[]
+  familyMembers         FamilyMemberProfile[]
+  familyMemberInvitations FamilyMemberInvitation[]
 
   @@index([invitedByTherapistId])
   @@index([status])
@@ -353,6 +365,7 @@ model TherapistProfile {
   invitedPatients       PatientProfile[] @relation("InvitedPatients")
   patientRelationships  PatientTherapistRelationship[]
   milestoneTemplates    MilestoneTemplate[]
+  familyMemberInvitationsSent FamilyMemberInvitation[]
 
   @@map("therapist_profiles")
 }
@@ -595,6 +608,8 @@ model Session {
   completedAt           DateTime?       @map("completed_at")
   durationMinutes       Int?            @map("duration_minutes")
   notes                 String?         // Patient free-text notes
+  startedByUserId       String?         @map("started_by_user_id")
+  startedByRole         String?         @map("started_by_role") // PATIENT, FAMILY_MEMBER
 
   createdAt             DateTime        @default(now()) @map("created_at")
   updatedAt             DateTime        @updatedAt @map("updated_at")
@@ -1015,6 +1030,73 @@ model AssessmentVote {
 
   @@unique([assessmentId, therapistId])
   @@map("assessment_votes")
+}
+
+// ============================================
+// FAMILY MEMBER
+// ============================================
+
+model FamilyMemberProfile {
+  id                    String    @id @default(uuid())
+  userId                String?   @unique @map("user_id")
+  patientProfileId      String    @map("patient_profile_id")
+  relationship          String    // PARENT, SPOUSE, CHILD, SIBLING, GRANDPARENT, CAREGIVER
+  canStartSessions      Boolean   @default(true) @map("can_start_sessions")
+
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  user                  User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  patientProfile        PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Cascade)
+  invitation            FamilyMemberInvitation?
+
+  @@index([patientProfileId])
+  @@map("family_member_profiles")
+}
+
+model FamilyMemberInvitation {
+  id                    String                        @id @default(uuid())
+  token                 String                        @unique
+  patientProfileId      String                        @map("patient_profile_id")
+  invitedByTherapistId  String                        @map("invited_by_therapist_id")
+  familyMemberProfileId String?                       @unique @map("family_member_profile_id")
+
+  firstName             String                        @map("first_name")
+  lastName              String                        @map("last_name")
+  email                 String?
+  phoneNumber           String?                       @map("phone_number")
+  relationship          String
+
+  status                FamilyMemberInvitationStatus  @default(PENDING)
+  expiresAt             DateTime                      @map("expires_at")
+  usedAt                DateTime?                     @map("used_at")
+
+  createdAt             DateTime                      @default(now()) @map("created_at")
+
+  // Relations
+  patientProfile        PatientProfile                @relation(fields: [patientProfileId], references: [id])
+  invitedByTherapist    TherapistProfile              @relation(fields: [invitedByTherapistId], references: [id])
+  familyMemberProfile   FamilyMemberProfile?          @relation(fields: [familyMemberProfileId], references: [id])
+
+  @@index([token])
+  @@index([patientProfileId])
+  @@map("family_member_invitations")
+}
+
+model MagicLinkToken {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  token       String    @unique
+  expiresAt   DateTime  @map("expires_at")
+  usedAt      DateTime? @map("used_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@map("magic_link_tokens")
 }
 
 // ============================================

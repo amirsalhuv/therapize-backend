@@ -14,6 +14,7 @@ import { FirstSessionFormsModule } from './modules/first-session-forms/first-ses
 import { PatientRelationshipsModule } from './modules/patient-relationships/patient-relationships.module';
 import { LibraryModule } from './modules/library/library.module';
 import { MilestonesModule } from './modules/milestones/milestones.module';
+import { FamilyMembersModule } from './modules/family-members/family-members.module';
 import { JwtAuthGuard, RolesGuard } from './modules/auth/guards';
 
 @Module({
@@ -37,6 +38,7 @@ import { JwtAuthGuard, RolesGuard } from './modules/auth/guards';
     PatientRelationshipsModule,
     LibraryModule,
     MilestonesModule,
+    FamilyMembersModule,
   ],
   controllers: [],
   providers: [

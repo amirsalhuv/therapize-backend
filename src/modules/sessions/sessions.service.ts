@@ -16,7 +16,13 @@ export class SessionsService {
         take: limit,
         where,
         orderBy: { scheduledDate: 'desc' },
-        include: { feedback: true },
+        include: {
+          feedback: true,
+          sessionExercises: {
+            include: { exercise: true },
+            orderBy: { orderIndex: 'asc' },
+          },
+        },
       }),
       this.prisma.session.count({ where }),
     ]);
@@ -215,7 +221,7 @@ export class SessionsService {
     });
   }
 
-  async startSession(id: string) {
+  async startSession(id: string, startedByUserId?: string, startedByRole?: string) {
     const session = await this.findOne(id);
     if (session.status !== 'SCHEDULED') {
       throw new BadRequestException('Session already started or completed');
@@ -223,14 +229,19 @@ export class SessionsService {
 
     return this.prisma.session.update({
       where: { id },
-      data: { status: 'IN_PROGRESS', startedAt: new Date() },
+      data: {
+        status: 'IN_PROGRESS',
+        startedAt: new Date(),
+        startedByUserId: startedByUserId || null,
+        startedByRole: startedByRole || 'PATIENT',
+      },
     });
   }
 
   async completeSession(id: string) {
     const session = await this.findOne(id);
-    if (session.status !== 'IN_PROGRESS') {
-      throw new BadRequestException('Session not in progress');
+    if (session.status !== 'IN_PROGRESS' && session.status !== 'PAUSED') {
+      throw new BadRequestException('Session not in progress or paused');
     }
 
     const startedAt = session.startedAt || new Date();
@@ -305,21 +316,30 @@ export class SessionsService {
   }
 
   /**
-   * Create a session for today if none exists for this episode.
+   * Create a session for today if needed (supports bonus sessions up to maxSessionsPerDay).
    */
   private async createTodaySessionIfNeeded(episodeId: string, today: Date): Promise<void> {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
+    const maxSessionsPerDay = 2;
 
-    // Check if session already exists for today
-    const existingSession = await this.prisma.session.findFirst({
+    // Get all sessions for today
+    const todaySessions = await this.prisma.session.findMany({
       where: {
         episodeId,
         scheduledDate: { gte: today, lt: tomorrow },
       },
     });
 
-    if (existingSession) return;
+    // Check if there's already a pending session (SCHEDULED, IN_PROGRESS, PAUSED)
+    const pendingSession = todaySessions.find(
+      (s) => s.status === 'SCHEDULED' || s.status === 'IN_PROGRESS' || s.status === 'PAUSED',
+    );
+    if (pendingSession) return; // Already have an active session
+
+    // Check if we've reached the daily limit
+    const completedCount = todaySessions.filter((s) => s.status === 'COMPLETED').length;
+    if (completedCount >= maxSessionsPerDay) return; // Max sessions reached
 
     // Get exercises for the new session
     const exercises = await this.getExercisesForNewSession(episodeId);

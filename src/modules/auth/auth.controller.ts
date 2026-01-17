@@ -13,7 +13,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { AuthGuard } from '@nestjs/passport';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
-import { RegisterDto, LoginDto, RefreshTokenDto, RegisterPatientDto } from './dto';
+import { RegisterDto, LoginDto, RefreshTokenDto, RegisterPatientDto, RequestMagicLinkDto, AcceptFamilyInviteDto } from './dto';
 import { Public, CurrentUser } from '../../common/decorators';
 
 @ApiTags('auth')
@@ -109,5 +109,47 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Verification email sent' })
   async resendVerification(@Body('email') email: string) {
     return this.authService.resendVerificationEmail(email);
+  }
+
+  // ============================================
+  // MAGIC LINK AUTHENTICATION
+  // ============================================
+
+  @Public()
+  @Post('magic-link/request')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Request magic link for passwordless login (family members only)' })
+  @ApiResponse({ status: 200, description: 'Magic link sent if account exists' })
+  async requestMagicLink(@Body() dto: RequestMagicLinkDto) {
+    return this.authService.requestMagicLink(dto);
+  }
+
+  @Public()
+  @Get('magic-link/verify/:token')
+  @ApiOperation({ summary: 'Verify magic link and get tokens' })
+  @ApiResponse({ status: 200, description: 'Magic link verified, tokens returned' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired magic link' })
+  async verifyMagicLink(@Param('token') token: string, @Req() req: Request) {
+    const deviceInfo = req.headers['user-agent'];
+    const ipAddress =
+      req.headers['x-forwarded-for']?.toString() || req.ip || req.socket?.remoteAddress;
+    return this.authService.verifyMagicLink(token, deviceInfo, ipAddress);
+  }
+
+  // ============================================
+  // FAMILY MEMBER INVITATION
+  // ============================================
+
+  @Public()
+  @Post('family-invite/accept')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Accept family member invitation and create account' })
+  @ApiResponse({ status: 200, description: 'Account created, auto-logged in' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired invitation' })
+  async acceptFamilyInvite(@Body() dto: AcceptFamilyInviteDto, @Req() req: Request) {
+    const deviceInfo = req.headers['user-agent'];
+    const ipAddress =
+      req.headers['x-forwarded-for']?.toString() || req.ip || req.socket?.remoteAddress;
+    return this.authService.acceptFamilyInvite(dto, deviceInfo, ipAddress);
   }
 }
