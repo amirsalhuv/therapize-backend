@@ -161,7 +161,7 @@ export class PatientRelationshipsService {
       include: {
         patient: {
           include: {
-            user: { select: { id: true, firstName: true, lastName: true, email: true } },
+            user: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, locale: true } },
           },
         },
         therapist: {
@@ -225,7 +225,7 @@ export class PatientRelationshipsService {
       include: {
         patient: {
           include: {
-            user: { select: { id: true, firstName: true, lastName: true, email: true } },
+            user: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, locale: true } },
           },
         },
         therapist: {
@@ -260,7 +260,7 @@ export class PatientRelationshipsService {
       include: {
         patient: {
           include: {
-            user: { select: { id: true, firstName: true, lastName: true, email: true } },
+            user: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, locale: true } },
           },
         },
         therapist: {
@@ -282,7 +282,7 @@ export class PatientRelationshipsService {
       include: {
         patient: {
           include: {
-            user: { select: { id: true, firstName: true, lastName: true, email: true } },
+            user: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, locale: true } },
           },
         },
         therapist: {
@@ -328,7 +328,7 @@ export class PatientRelationshipsService {
       include: {
         patient: {
           include: {
-            user: { select: { id: true, firstName: true, lastName: true, email: true } },
+            user: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, locale: true } },
           },
         },
         programEpisode: true,
@@ -347,7 +347,7 @@ export class PatientRelationshipsService {
       include: {
         patient: {
           include: {
-            user: { select: { id: true, firstName: true, lastName: true, email: true } },
+            user: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, locale: true } },
             invitation: {
               select: { id: true, firstName: true, lastName: true, status: true, expiresAt: true },
             },
@@ -382,7 +382,7 @@ export class PatientRelationshipsService {
         therapistRelationships: { none: {} },
       },
       include: {
-        user: { select: { id: true, firstName: true, lastName: true, email: true } },
+        user: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, locale: true } },
       },
       orderBy: { createdAt: 'desc' },
     });

@@ -2,7 +2,7 @@ import { Controller, Get, Post, Patch, Body, Param, Query } from '@nestjs/common
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { PatientsService } from './patients.service';
 import { PatientRelationshipsService } from '../patient-relationships/patient-relationships.service';
-import { CreatePatientProfileDto, UpdatePatientProfileDto } from './dto';
+import { CreatePatientProfileDto, UpdatePatientProfileDto, UpdatePatientUserDto } from './dto';
 import { SelectProgramsDto } from '../patient-relationships/dto';
 import { Roles, CurrentUser } from '../../common/decorators';
 import { Role } from '../../common/enums';
@@ -75,6 +75,13 @@ export class PatientsController {
   @ApiOperation({ summary: 'Update patient profile' })
   update(@Param('id') id: string, @Body() dto: UpdatePatientProfileDto) {
     return this.patientsService.update(id, dto);
+  }
+
+  @Patch(':id/user')
+  @Roles(Role.THERAPIST, Role.LEAD_THERAPIST, Role.ADMIN)
+  @ApiOperation({ summary: 'Update patient user info (phone, language)' })
+  updatePatientUser(@Param('id') id: string, @Body() dto: UpdatePatientUserDto) {
+    return this.patientsService.updatePatientUser(id, dto);
   }
 
   @Get(':id/episodes')

@@ -72,6 +72,31 @@ export class SessionsService {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+    // Query active episode independently (not dependent on today's sessions)
+    const activeEpisode = await this.prisma.programEpisode.findFirst({
+      where: { patientId: patient.id, status: 'ACTIVE' },
+      select: {
+        id: true,
+        currentWeek: true,
+        durationWeeks: true,
+        patientPlans: { where: { isActive: true }, take: 1, select: { id: true, name: true } },
+      },
+    });
+
+    const episodeInfo = activeEpisode
+      ? {
+          id: activeEpisode.id,
+          currentWeek: activeEpisode.currentWeek,
+          durationWeeks: activeEpisode.durationWeeks,
+          patientPlan: activeEpisode.patientPlans?.[0] || null,
+        }
+      : null;
+
+    // Auto-create session for today if none exists and patient has active episode
+    if (activeEpisode) {
+      await this.createTodaySessionIfNeeded(activeEpisode.id, today);
+    }
+
     // Get all sessions for today
     const todaySessions = await this.prisma.session.findMany({
       where: {
@@ -80,14 +105,6 @@ export class SessionsService {
       },
       include: {
         sessionExercises: { include: { exercise: true }, orderBy: { orderIndex: 'asc' } },
-        episode: {
-          select: {
-            id: true,
-            currentWeek: true,
-            durationWeeks: true,
-            patientPlans: { where: { isActive: true }, take: 1, select: { id: true, name: true } },
-          },
-        },
         feedback: true,
       },
       orderBy: { scheduledDate: 'asc' },
@@ -98,17 +115,6 @@ export class SessionsService {
     const pendingSessions = todaySessions.filter(
       (s) => s.status === 'SCHEDULED' || s.status === 'IN_PROGRESS' || s.status === 'PAUSED',
     );
-
-    // Get episode info from first session or find active episode
-    const episode = todaySessions[0]?.episode || null;
-    const episodeInfo = episode
-      ? {
-          id: episode.id,
-          currentWeek: episode.currentWeek,
-          durationWeeks: episode.durationWeeks,
-          patientPlan: episode.patientPlans?.[0] || null,
-        }
-      : null;
 
     // Build response
     const maxSessionsPerDay = 2;
@@ -251,5 +257,86 @@ export class SessionsService {
 
   async getFeedback(sessionId: string) {
     return this.prisma.sessionFeedback.findUnique({ where: { sessionId } });
+  }
+
+  /**
+   * Get exercises for a new session.
+   * Strategy 1: Copy from most recent completed session in this episode
+   * Strategy 2: Fall back to template exercises if no previous sessions
+   * Strategy 3: Return empty if no source available
+   */
+  private async getExercisesForNewSession(episodeId: string): Promise<{ exerciseId: string; orderIndex: number }[]> {
+    // Strategy 1: Copy from most recent session with exercises
+    const recentSession = await this.prisma.session.findFirst({
+      where: { episodeId },
+      orderBy: { scheduledDate: 'desc' },
+      include: { sessionExercises: { orderBy: { orderIndex: 'asc' } } },
+    });
+
+    if (recentSession?.sessionExercises.length) {
+      return recentSession.sessionExercises.map((se) => ({
+        exerciseId: se.exerciseId,
+        orderIndex: se.orderIndex,
+      }));
+    }
+
+    // Strategy 2: Get exercises from patient plan's template
+    const episode = await this.prisma.programEpisode.findUnique({
+      where: { id: episodeId },
+      include: {
+        patientPlans: {
+          where: { isActive: true },
+          take: 1,
+          include: { template: { include: { exercises: true } } },
+        },
+      },
+    });
+
+    const templateExercises = episode?.patientPlans?.[0]?.template?.exercises;
+    if (templateExercises?.length) {
+      return templateExercises.map((ex, idx) => ({
+        exerciseId: ex.id,
+        orderIndex: idx,
+      }));
+    }
+
+    // Strategy 3: Return empty array (patient will see empty session)
+    return [];
+  }
+
+  /**
+   * Create a session for today if none exists for this episode.
+   */
+  private async createTodaySessionIfNeeded(episodeId: string, today: Date): Promise<void> {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Check if session already exists for today
+    const existingSession = await this.prisma.session.findFirst({
+      where: {
+        episodeId,
+        scheduledDate: { gte: today, lt: tomorrow },
+      },
+    });
+
+    if (existingSession) return;
+
+    // Get exercises for the new session
+    const exercises = await this.getExercisesForNewSession(episodeId);
+
+    // Create new session with exercises
+    await this.prisma.session.create({
+      data: {
+        episodeId,
+        scheduledDate: today,
+        status: 'SCHEDULED',
+        sessionExercises: {
+          create: exercises.map((e) => ({
+            exerciseId: e.exerciseId,
+            orderIndex: e.orderIndex,
+          })),
+        },
+      },
+    });
   }
 }

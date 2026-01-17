@@ -49,4 +49,9 @@ export class BasicDataDto {
   @IsOptional()
   @IsString()
   previousTreatments?: string;
+
+  @ApiProperty({ description: 'Patient phone number' })
+  @IsOptional()
+  @IsString()
+  phoneNumber?: string;
 }

@@ -12,6 +12,7 @@ import { FirstSessionFormsService } from './first-session-forms.service';
 import {
   CreateFirstSessionFormDto,
   UpdateFirstSessionFormDto,
+  UpdateGoalsDto,
 } from './dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -72,6 +73,19 @@ export class FirstSessionFormsController {
     @CurrentUser() user: { id: string; therapistProfileId: string },
   ) {
     return this.service.update(id, dto, user.therapistProfileId);
+  }
+
+  @Patch(':id/goals')
+  @Roles(Role.THERAPIST, Role.LEAD_THERAPIST)
+  @ApiOperation({ summary: 'Update therapy goals on a first session form' })
+  @ApiResponse({ status: 200, description: 'Goals updated' })
+  @ApiResponse({ status: 404, description: 'Form not found' })
+  updateGoals(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateGoalsDto,
+    @CurrentUser() user: { id: string; therapistProfileId: string },
+  ) {
+    return this.service.updateGoals(id, dto, user.therapistProfileId);
   }
 
   @Post(':id/complete')

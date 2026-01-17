@@ -5,7 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
-import { CreateFirstSessionFormDto, UpdateFirstSessionFormDto } from './dto';
+import { CreateFirstSessionFormDto, UpdateFirstSessionFormDto, UpdateGoalsDto } from './dto';
 import { FirstSessionFormStatus } from '@prisma/client';
 
 @Injectable()
@@ -177,6 +177,44 @@ export class FirstSessionFormsService {
       await this.prisma.patientProfile.update({
         where: { id: updatedForm.episode.patientId },
         data: { status: 'ACTIVE' },
+      });
+    }
+
+    return updatedForm;
+  }
+
+  async updateGoals(id: string, dto: UpdateGoalsDto, therapistId: string) {
+    // Verify access
+    const form = await this.findOne(id, therapistId);
+
+    // Get existing therapyGoals or create empty object
+    const existingGoals = (form.therapyGoals as Record<string, unknown>) || {};
+
+    // Update goals while preserving other therapyGoals fields
+    const updatedTherapyGoals = {
+      ...existingGoals,
+      goals: dto.goals.map((g) => ({
+        description: g.description,
+        targetValue: g.targetValue,
+        targetDate: g.targetDate,
+      })),
+    };
+
+    // Update form
+    const updatedForm = await this.prisma.firstSessionForm.update({
+      where: { id },
+      data: {
+        therapyGoals: updatedTherapyGoals as object,
+      },
+    });
+
+    // Also update the ProgramEpisode goals if form is completed
+    if (form.status === FirstSessionFormStatus.COMPLETED) {
+      await this.prisma.programEpisode.update({
+        where: { id: form.episodeId },
+        data: {
+          goals: updatedTherapyGoals as object,
+        },
       });
     }
 
