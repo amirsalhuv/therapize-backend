@@ -155,6 +155,22 @@ enum MilestoneTriggerType {
   TIMELINE_BASED
 }
 
+enum MessageContentType {
+  TEXT
+  VOICE
+  IMAGE
+  VIDEO
+  FILE
+}
+
+enum SessionStageType {
+  WARMUP
+  MAIN
+  COOLDOWN
+  STRETCH
+  CUSTOM
+}
+
 // ============================================
 // USER & AUTHENTICATION
 // ============================================
@@ -452,6 +468,7 @@ model FirstSessionForm {
   performanceTests      Json?                   @map("performance_tests")
   therapyGoals          Json?                   @map("therapy_goals")
   onboarding            Json?
+  initialProgram        Json?                   @map("initial_program")
 
   createdAt             DateTime                @default(now()) @map("created_at")
   updatedAt             DateTime                @updatedAt @map("updated_at")
@@ -558,6 +575,7 @@ model ProgramTemplate {
   createdBy             TherapistProfile @relation(fields: [createdById], references: [id])
   patientPlans          PatientPlan[]
   exercises             Exercise[]
+  sessionStages         SessionStageTemplate[]
 
   @@index([category])
   @@index([isPublished])
@@ -572,9 +590,10 @@ model PatientPlan {
   id                    String          @id @default(uuid())
   patientId             String          @map("patient_id")
   episodeId             String          @map("episode_id")
-  templateId            String?         @map("template_id")
+  templateId            String?         @map("template_id") // Reference only - not enforced
   name                  String
-  customizations        Json?           // Patient-specific modifications
+  customizations        Json?           // DEPRECATED: Use activeExercises instead
+  activeExercises       Json            @default("[]") @map("active_exercises") // Source of truth for patient's exercises
   startDate             DateTime        @map("start_date")
   endDate               DateTime?       @map("end_date")
   isActive              Boolean         @default(true) @map("is_active")
@@ -666,13 +685,20 @@ model Exercise {
   descriptionHe         String?         @map("description_he")
   instructions          String?
   instructionsHe        String?         @map("instructions_he")
+  purpose               String?         // Why this exercise helps
+  purposeHe             String?         @map("purpose_he")
   mediaUrl              String?         @map("media_url")
   mediaType             String?         @map("media_type")
+  previewImageUrl       String?         @map("preview_image_url")
   durationMinutes       Int?            @map("duration_minutes")
   repetitions           Int?
   sets                  Int?
   category              String?
   difficulty            Int?            // 1-5
+  bodyParts             String[]        @default([]) @map("body_parts")
+  isLibraryExercise     Boolean         @default(false) @map("is_library_exercise")
+  createdById           String?         @map("created_by_id")
+  isDeleted             Boolean         @default(false) @map("is_deleted")
 
   createdAt             DateTime        @default(now()) @map("created_at")
   updatedAt             DateTime        @updatedAt @map("updated_at")
@@ -682,9 +708,66 @@ model Exercise {
   itemFeedbacks         SessionItemFeedback[]
   patientNotes          ExercisePatientNote[]
   sessionExercises      SessionExercise[]
+  stageExercises        StageExercise[]
 
   @@index([category])
+  @@index([isLibraryExercise])
   @@map("exercises")
+}
+
+// ============================================
+// SESSION STAGE TEMPLATE (Stage in a program)
+// NOTE: DEPRECATED - Not used in patient flow. Kept for backward compatibility.
+// ============================================
+
+model SessionStageTemplate {
+  id                    String            @id @default(uuid())
+  templateId            String            @map("template_id")
+  type                  SessionStageType
+  name                  String
+  nameHe                String?           @map("name_he")
+  description           String?
+  descriptionHe         String?           @map("description_he")
+  orderIndex            Int               @map("order_index")
+  durationMinutes       Int?              @map("duration_minutes")
+
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  // Relations
+  template              ProgramTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  stageExercises        StageExercise[]
+
+  @@index([templateId])
+  @@map("session_stage_templates")
+}
+
+// ============================================
+// STAGE EXERCISE (Exercise in a stage)
+// NOTE: DEPRECATED - Not used in patient flow. Kept for backward compatibility.
+// ============================================
+
+model StageExercise {
+  id                    String                  @id @default(uuid())
+  stageId               String                  @map("stage_id")
+  exerciseId            String                  @map("exercise_id")
+  orderIndex            Int                     @map("order_index")
+  customReps            Int?                    @map("custom_reps")
+  customSets            Int?                    @map("custom_sets")
+  customDuration        Int?                    @map("custom_duration")
+  notes                 String?
+  notesHe               String?                 @map("notes_he")
+
+  createdAt             DateTime                @default(now()) @map("created_at")
+  updatedAt             DateTime                @updatedAt @map("updated_at")
+
+  // Relations
+  stage                 SessionStageTemplate    @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  exercise              Exercise                @relation(fields: [exerciseId], references: [id])
+
+  @@unique([stageId, exerciseId])
+  @@index([stageId])
+  @@map("stage_exercises")
 }
 
 // ============================================
@@ -846,20 +929,28 @@ model GroupThreadParticipant {
 }
 
 model Message {
-  id                    String          @id @default(uuid())
-  threadId              String          @map("thread_id")
-  senderId              String          @map("sender_id")
-  content               String
-  contentType           String          @default("text") @map("content_type")
-  isEdited              Boolean         @default(false) @map("is_edited")
+  id                    String              @id @default(uuid())
+  threadId              String              @map("thread_id")
+  senderId              String              @map("sender_id")
+  content               String?
+  contentType           MessageContentType  @default(TEXT) @map("content_type")
+  isEdited              Boolean             @default(false) @map("is_edited")
 
-  createdAt             DateTime        @default(now()) @map("created_at")
-  updatedAt             DateTime        @updatedAt @map("updated_at")
-  deletedAt             DateTime?       @map("deleted_at")
+  // File attachment fields
+  fileUrl               String?             @map("file_url")
+  fileName              String?             @map("file_name")
+  fileSizeBytes         Int?                @map("file_size_bytes")
+  mimeType              String?             @map("mime_type")
+  thumbnailUrl          String?             @map("thumbnail_url")
+  durationSeconds       Int?                @map("duration_seconds")
+
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+  deletedAt             DateTime?           @map("deleted_at")
 
   // Relations
-  thread                GroupThread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  sender                User            @relation("SentMessages", fields: [senderId], references: [id])
+  thread                GroupThread         @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender                User                @relation("SentMessages", fields: [senderId], references: [id])
 
   @@index([threadId])
   @@index([senderId])

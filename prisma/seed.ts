@@ -304,6 +304,32 @@ async function main() {
   });
   console.log(`Created patient: ${patient2.email}`);
 
+  // Create Patient 3 - Nahum
+  const patient3 = await prisma.user.upsert({
+    where: { email: 'nahum@gmail.com' },
+    update: {},
+    create: {
+      email: 'nahum@gmail.com',
+      passwordHash,
+      firstName: 'Nahum',
+      lastName: 'Patient',
+      roles: ['PATIENT'],
+      status: 'ACTIVE',
+      emailVerified: true,
+      emailVerifiedAt: new Date(),
+      locale: 'EN',
+      patientProfile: {
+        create: {
+          ageRange: 'ADULT',
+          country: 'Israel',
+          city: 'Tel Aviv',
+          conditionDescription: 'Seeking physical therapy',
+        },
+      },
+    },
+  });
+  console.log(`Created patient: ${patient3.email}`);
+
   // Get therapist and patient profiles for creating episodes
   const sarahProfile = await prisma.therapistProfile.findUnique({
     where: { userId: therapist1.id },
@@ -317,7 +343,63 @@ async function main() {
     where: { userId: patient2.id },
   });
 
-  if (sarahProfile && johnProfile && janeProfile) {
+  const nahumProfile = await prisma.patientProfile.findUnique({
+    where: { userId: patient3.id },
+  });
+
+  if (sarahProfile && johnProfile && janeProfile && nahumProfile) {
+    // Create patient-therapist relationships
+    const relationship1 = await prisma.patientTherapistRelationship.upsert({
+      where: {
+        patientId_therapistId: {
+          patientId: johnProfile.id,
+          therapistId: sarahProfile.id,
+        },
+      },
+      update: {},
+      create: {
+        patientId: johnProfile.id,
+        therapistId: sarahProfile.id,
+        discipline: 'PT',
+        status: 'ACTIVE',
+      },
+    });
+    console.log(`Created relationship: John Doe <-> Dr. Sarah`);
+
+    const relationship2 = await prisma.patientTherapistRelationship.upsert({
+      where: {
+        patientId_therapistId: {
+          patientId: janeProfile.id,
+          therapistId: sarahProfile.id,
+        },
+      },
+      update: {},
+      create: {
+        patientId: janeProfile.id,
+        therapistId: sarahProfile.id,
+        discipline: 'PT',
+        status: 'ACTIVE',
+      },
+    });
+    console.log(`Created relationship: Jane Smith <-> Dr. Sarah`);
+
+    const relationship3 = await prisma.patientTherapistRelationship.upsert({
+      where: {
+        patientId_therapistId: {
+          patientId: nahumProfile.id,
+          therapistId: sarahProfile.id,
+        },
+      },
+      update: {},
+      create: {
+        patientId: nahumProfile.id,
+        therapistId: sarahProfile.id,
+        discipline: 'PT',
+        status: 'ACTIVE',
+      },
+    });
+    console.log(`Created relationship: Nahum <-> Dr. Sarah`);
+
     // Create Program Episode for John Doe with Dr. Sarah (Week 5 of 12)
     const episode1 = await prisma.programEpisode.upsert({
       where: {
@@ -326,11 +408,13 @@ async function main() {
       update: {
         currentWeek: 5,
         status: 'ACTIVE',
+        relationshipId: relationship1.id,
       },
       create: {
         id: 'demo-episode-john-sarah',
         patientId: johnProfile.id,
         therapistId: sarahProfile.id,
+        relationshipId: relationship1.id,
         status: 'ACTIVE',
         durationWeeks: 12,
         currentWeek: 5,
@@ -353,11 +437,13 @@ async function main() {
       update: {
         currentWeek: 3,
         status: 'ACTIVE',
+        relationshipId: relationship2.id,
       },
       create: {
         id: 'demo-episode-jane-sarah',
         patientId: janeProfile.id,
         therapistId: sarahProfile.id,
+        relationshipId: relationship2.id,
         status: 'ACTIVE',
         durationWeeks: 12,
         currentWeek: 3,
@@ -432,6 +518,7 @@ async function main() {
   console.log('\nPATIENTS:');
   console.log('  john.doe@example.com');
   console.log('  jane.smith@example.com');
+  console.log('  nahum@gmail.com');
   console.log('------------------------\n');
 }
 

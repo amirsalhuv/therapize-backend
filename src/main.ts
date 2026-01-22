@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 import * as helmet from 'helmet';
 import * as express from 'express';
 import { join } from 'path';
@@ -9,10 +10,18 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Enable WebSocket with Socket.IO
+  app.useWebSocketAdapter(new IoAdapter(app));
+
   // Serve static video files from ../Videos folder
   const videosPath = join(process.cwd(), '..', 'Videos');
   console.log('📹 Serving videos from:', videosPath);
   app.use('/videos', express.static(videosPath));
+
+  // Serve uploaded files from uploads folder (development)
+  const uploadsPath = join(process.cwd(), 'uploads');
+  console.log('📁 Serving uploads from:', uploadsPath);
+  app.use('/uploads', express.static(uploadsPath));
 
   // Security headers
   app.use(helmet.default());
@@ -27,6 +36,8 @@ async function bootstrap() {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept-Language'],
+    // Allow WebSocket upgrades
+    transports: ['websocket', 'polling'],
   });
 
   // Global validation pipe
@@ -53,6 +64,8 @@ async function bootstrap() {
     .addTag('therapists', 'Therapist management')
     .addTag('episodes', 'Program episodes')
     .addTag('sessions', 'Therapy sessions')
+    .addTag('messaging', 'Real-time messaging')
+    .addTag('uploads', 'File uploads')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

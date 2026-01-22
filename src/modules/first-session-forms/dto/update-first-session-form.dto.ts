@@ -5,6 +5,7 @@ import { BasicDataDto } from './basic-data.dto';
 import { PerformanceTestsDto } from './performance-test.dto';
 import { TherapyGoalsDto } from './therapy-goals.dto';
 import { OnboardingDto } from './onboarding.dto';
+import { InitialProgramDto } from './initial-program.dto';
 
 export class UpdateFirstSessionFormDto {
   @ApiProperty({ type: BasicDataDto, required: false })
@@ -30,4 +31,10 @@ export class UpdateFirstSessionFormDto {
   @ValidateNested()
   @Type(() => OnboardingDto)
   onboarding?: OnboardingDto;
+
+  @ApiProperty({ type: InitialProgramDto, required: false })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => InitialProgramDto)
+  initialProgram?: InitialProgramDto;
 }

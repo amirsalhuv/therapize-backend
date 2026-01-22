@@ -15,6 +15,10 @@ import { PatientRelationshipsModule } from './modules/patient-relationships/pati
 import { LibraryModule } from './modules/library/library.module';
 import { MilestonesModule } from './modules/milestones/milestones.module';
 import { FamilyMembersModule } from './modules/family-members/family-members.module';
+import { MessagingModule } from './modules/messaging/messaging.module';
+import { UploadsModule } from './modules/uploads/uploads.module';
+import { ExercisesModule } from './modules/exercises/exercises.module';
+import { PatientPlansModule } from './modules/patient-plans/patient-plans.module';
 import { JwtAuthGuard, RolesGuard } from './modules/auth/guards';
 
 @Module({
@@ -39,6 +43,10 @@ import { JwtAuthGuard, RolesGuard } from './modules/auth/guards';
     LibraryModule,
     MilestonesModule,
     FamilyMembersModule,
+    MessagingModule,
+    UploadsModule,
+    ExercisesModule,
+    PatientPlansModule,
   ],
   controllers: [],
   providers: [

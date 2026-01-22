@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../database';
-import { SearchLibraryDto } from './dto';
+import { SearchLibraryDto, CreateStageDto, UpdateStageDto, AddExerciseToStageDto, UpdateStageExerciseDto, ReorderStagesDto } from './dto';
 import { Prisma } from '@prisma/client';
 import { BODY_PARTS, CONDITIONS, CATEGORIES, BilingualItem } from '../../common/constants';
 import { I18nService, Locale } from '../../i18n';
@@ -202,5 +202,226 @@ export class LibraryService {
 
   getBodyParts(locale: Locale = 'EN') {
     return this.localizeItems(BODY_PARTS, locale);
+  }
+
+  // ============================================
+  // STAGE MANAGEMENT
+  // ============================================
+
+  async getProgramStages(programId: string, locale: Locale = 'EN') {
+    const stages = await this.prisma.sessionStageTemplate.findMany({
+      where: { templateId: programId },
+      include: {
+        stageExercises: {
+          include: { exercise: true },
+          orderBy: { orderIndex: 'asc' },
+        },
+      },
+      orderBy: { orderIndex: 'asc' },
+    });
+
+    return stages.map((stage) => ({
+      id: stage.id,
+      type: stage.type,
+      name: this.i18n.localizeField(stage, 'name', locale),
+      description: this.i18n.localizeField(stage, 'description', locale),
+      orderIndex: stage.orderIndex,
+      durationMinutes: stage.durationMinutes,
+      exercises: stage.stageExercises.map((se) => ({
+        id: se.id,
+        exerciseId: se.exerciseId,
+        orderIndex: se.orderIndex,
+        customReps: se.customReps,
+        customSets: se.customSets,
+        customDuration: se.customDuration,
+        notes: this.i18n.localizeField(se, 'notes', locale),
+        exercise: {
+          ...se.exercise,
+          name: this.i18n.localizeField(se.exercise, 'name', locale),
+          description: this.i18n.localizeField(se.exercise, 'description', locale),
+          instructions: this.i18n.localizeField(se.exercise, 'instructions', locale),
+        },
+      })),
+    }));
+  }
+
+  async createStage(programId: string, dto: CreateStageDto, therapistId: string) {
+    const program = await this.prisma.programTemplate.findUnique({
+      where: { id: programId },
+    });
+
+    if (!program) {
+      throw new NotFoundException('Program not found');
+    }
+
+    if (program.createdById !== therapistId) {
+      throw new ForbiddenException('You can only modify your own programs');
+    }
+
+    return this.prisma.sessionStageTemplate.create({
+      data: {
+        templateId: programId,
+        type: dto.type,
+        name: dto.name,
+        nameHe: dto.nameHe,
+        description: dto.description,
+        descriptionHe: dto.descriptionHe,
+        orderIndex: dto.orderIndex,
+        durationMinutes: dto.durationMinutes,
+      },
+    });
+  }
+
+  async updateStage(programId: string, stageId: string, dto: UpdateStageDto, therapistId: string) {
+    const stage = await this.prisma.sessionStageTemplate.findFirst({
+      where: { id: stageId, templateId: programId },
+      include: { template: true },
+    });
+
+    if (!stage) {
+      throw new NotFoundException('Stage not found');
+    }
+
+    if (stage.template.createdById !== therapistId) {
+      throw new ForbiddenException('You can only modify your own programs');
+    }
+
+    return this.prisma.sessionStageTemplate.update({
+      where: { id: stageId },
+      data: dto,
+    });
+  }
+
+  async deleteStage(programId: string, stageId: string, therapistId: string) {
+    const stage = await this.prisma.sessionStageTemplate.findFirst({
+      where: { id: stageId, templateId: programId },
+      include: { template: true },
+    });
+
+    if (!stage) {
+      throw new NotFoundException('Stage not found');
+    }
+
+    if (stage.template.createdById !== therapistId) {
+      throw new ForbiddenException('You can only modify your own programs');
+    }
+
+    return this.prisma.sessionStageTemplate.delete({
+      where: { id: stageId },
+    });
+  }
+
+  async reorderStages(programId: string, dto: ReorderStagesDto, therapistId: string) {
+    const program = await this.prisma.programTemplate.findUnique({
+      where: { id: programId },
+    });
+
+    if (!program) {
+      throw new NotFoundException('Program not found');
+    }
+
+    if (program.createdById !== therapistId) {
+      throw new ForbiddenException('You can only modify your own programs');
+    }
+
+    // Update each stage's orderIndex based on position in array
+    await Promise.all(
+      dto.stageIds.map((stageId, index) =>
+        this.prisma.sessionStageTemplate.update({
+          where: { id: stageId },
+          data: { orderIndex: index },
+        }),
+      ),
+    );
+
+    return this.getProgramStages(programId);
+  }
+
+  // ============================================
+  // STAGE EXERCISE MANAGEMENT
+  // ============================================
+
+  async addExerciseToStage(programId: string, stageId: string, dto: AddExerciseToStageDto, therapistId: string) {
+    const stage = await this.prisma.sessionStageTemplate.findFirst({
+      where: { id: stageId, templateId: programId },
+      include: { template: true },
+    });
+
+    if (!stage) {
+      throw new NotFoundException('Stage not found');
+    }
+
+    if (stage.template.createdById !== therapistId) {
+      throw new ForbiddenException('You can only modify your own programs');
+    }
+
+    // Check if exercise exists
+    const exercise = await this.prisma.exercise.findFirst({
+      where: { id: dto.exerciseId, isDeleted: false },
+    });
+
+    if (!exercise) {
+      throw new NotFoundException('Exercise not found');
+    }
+
+    return this.prisma.stageExercise.create({
+      data: {
+        stageId,
+        exerciseId: dto.exerciseId,
+        orderIndex: dto.orderIndex,
+        customReps: dto.customReps,
+        customSets: dto.customSets,
+        customDuration: dto.customDuration,
+        notes: dto.notes,
+        notesHe: dto.notesHe,
+      },
+      include: { exercise: true },
+    });
+  }
+
+  async updateStageExercise(
+    programId: string,
+    stageId: string,
+    stageExerciseId: string,
+    dto: UpdateStageExerciseDto,
+    therapistId: string,
+  ) {
+    const stageExercise = await this.prisma.stageExercise.findFirst({
+      where: { id: stageExerciseId, stageId },
+      include: { stage: { include: { template: true } } },
+    });
+
+    if (!stageExercise) {
+      throw new NotFoundException('Stage exercise not found');
+    }
+
+    if (stageExercise.stage.template.createdById !== therapistId) {
+      throw new ForbiddenException('You can only modify your own programs');
+    }
+
+    return this.prisma.stageExercise.update({
+      where: { id: stageExerciseId },
+      data: dto,
+      include: { exercise: true },
+    });
+  }
+
+  async removeExerciseFromStage(programId: string, stageId: string, stageExerciseId: string, therapistId: string) {
+    const stageExercise = await this.prisma.stageExercise.findFirst({
+      where: { id: stageExerciseId, stageId },
+      include: { stage: { include: { template: true } } },
+    });
+
+    if (!stageExercise) {
+      throw new NotFoundException('Stage exercise not found');
+    }
+
+    if (stageExercise.stage.template.createdById !== therapistId) {
+      throw new ForbiddenException('You can only modify your own programs');
+    }
+
+    return this.prisma.stageExercise.delete({
+      where: { id: stageExerciseId },
+    });
   }
 }

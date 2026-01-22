@@ -272,47 +272,37 @@ export class SessionsService {
 
   /**
    * Get exercises for a new session.
-   * Strategy 1: Copy from most recent completed session in this episode
-   * Strategy 2: Fall back to template exercises if no previous sessions
-   * Strategy 3: Return empty if no source available
+   * Uses PatientPlan.activeExercises as the single source of truth.
+   * This allows therapists to modify exercises mid-treatment.
    */
   private async getExercisesForNewSession(episodeId: string): Promise<{ exerciseId: string; orderIndex: number }[]> {
-    // Strategy 1: Copy from most recent session with exercises
-    const recentSession = await this.prisma.session.findFirst({
-      where: { episodeId },
-      orderBy: { scheduledDate: 'desc' },
-      include: { sessionExercises: { orderBy: { orderIndex: 'asc' } } },
-    });
-
-    if (recentSession?.sessionExercises.length) {
-      return recentSession.sessionExercises.map((se) => ({
-        exerciseId: se.exerciseId,
-        orderIndex: se.orderIndex,
-      }));
-    }
-
-    // Strategy 2: Get exercises from patient plan's template
+    // Get active patient plan with its activeExercises
     const episode = await this.prisma.programEpisode.findUnique({
       where: { id: episodeId },
       include: {
         patientPlans: {
           where: { isActive: true },
+          orderBy: { createdAt: 'desc' },
           take: 1,
-          include: { template: { include: { exercises: true } } },
         },
       },
     });
 
-    const templateExercises = episode?.patientPlans?.[0]?.template?.exercises;
-    if (templateExercises?.length) {
-      return templateExercises.map((ex, idx) => ({
-        exerciseId: ex.id,
-        orderIndex: idx,
-      }));
+    const activePlan = episode?.patientPlans?.[0];
+    if (!activePlan?.activeExercises) {
+      return [];
     }
 
-    // Strategy 3: Return empty array (patient will see empty session)
-    return [];
+    // Parse and return exercises from activeExercises
+    const exercises = activePlan.activeExercises as Array<{
+      exerciseId: string;
+      orderIndex: number;
+    }>;
+
+    return exercises.map((ex) => ({
+      exerciseId: ex.exerciseId,
+      orderIndex: ex.orderIndex,
+    }));
   }
 
   /**

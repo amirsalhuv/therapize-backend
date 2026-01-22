@@ -120,6 +120,9 @@ export class FirstSessionFormsService {
     if (dto.onboarding !== undefined) {
       updateData.onboarding = dto.onboarding;
     }
+    if (dto.initialProgram !== undefined) {
+      updateData.initialProgram = dto.initialProgram;
+    }
 
     return this.prisma.firstSessionForm.update({
       where: { id },
@@ -128,11 +131,12 @@ export class FirstSessionFormsService {
   }
 
   async complete(id: string, therapistId: string) {
-    const form = await this.findOne(id, therapistId);
+    const form = await this.findOne(id, therapistId) as any;
 
     // Validate required fields
     const basicData = form.basicData as Record<string, unknown> | null;
     const therapyGoals = form.therapyGoals as Record<string, unknown> | null;
+    const initialProgram = form.initialProgram as { exercises: any[] } | null;
 
     if (!basicData) {
       throw new BadRequestException('Basic data is required to complete the form');
@@ -140,6 +144,12 @@ export class FirstSessionFormsService {
 
     if (!therapyGoals || !therapyGoals.goals) {
       throw new BadRequestException('Therapy goals are required to complete the form');
+    }
+
+    if (!initialProgram?.exercises || initialProgram.exercises.length < 2) {
+      throw new BadRequestException(
+        'At least 2-3 exercises are required to complete the first session form'
+      );
     }
 
     // Update form status
@@ -179,6 +189,44 @@ export class FirstSessionFormsService {
         data: { status: 'ACTIVE' },
       });
     }
+
+    // Create initial PatientPlan with selected exercises
+    const patientPlan = await this.prisma.patientPlan.create({
+      data: {
+        patientId: updatedForm.episode.patientId,
+        episodeId: form.episodeId,
+        name: 'Initial Program',
+        startDate: new Date(),
+        isActive: true,
+        activeExercises: initialProgram.exercises.map((ex, idx) => ({
+          exerciseId: ex.exerciseId,
+          orderIndex: ex.order ?? idx,
+          customReps: ex.customReps,
+          customSets: ex.customSets,
+          customDuration: ex.customDuration,
+          notes: ex.notes,
+          addedAt: new Date().toISOString(),
+        })) as any,
+        customizations: {} as object, // Empty - deprecated field
+      },
+    });
+
+    // Create first session with these exercises
+    await this.prisma.session.create({
+      data: {
+        episodeId: form.episodeId,
+        planId: patientPlan.id,
+        scheduledDate: new Date(),
+        status: 'SCHEDULED',
+        sessionExercises: {
+          create: initialProgram.exercises.map((ex, idx) => ({
+            exerciseId: ex.exerciseId,
+            orderIndex: ex.order || idx,
+            customInstructions: ex.notes || null,
+          })),
+        },
+      },
+    });
 
     return updatedForm;
   }

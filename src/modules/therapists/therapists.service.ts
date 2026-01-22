@@ -86,13 +86,6 @@ export class TherapistsService {
     });
   }
 
-  async getPrograms(therapistId: string) {
-    return this.prisma.programTemplate.findMany({
-      where: { createdById: therapistId },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
-
   async getDashboardPatients(therapistId: string) {
     // Get all patients invited by this therapist, grouped by status
     const patients = await this.prisma.patientProfile.findMany({
