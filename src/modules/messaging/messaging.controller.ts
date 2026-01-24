@@ -23,6 +23,20 @@ export class MessagingController {
     private messagingGateway: MessagingGateway,
   ) {}
 
+  @Get('unread-count')
+  @ApiOperation({ summary: 'Get total unread message count for the user' })
+  @ApiResponse({ status: 200, description: 'Unread count retrieved successfully' })
+  async getUnreadCount(@Request() req) {
+    return this.messagingService.getUnreadCount(req.user.id);
+  }
+
+  @Get('unread-by-episode')
+  @ApiOperation({ summary: 'Get unread message counts per episode' })
+  @ApiResponse({ status: 200, description: 'Unread counts by episode retrieved successfully' })
+  async getUnreadByEpisode(@Request() req) {
+    return this.messagingService.getUnreadCountsByEpisode(req.user.id);
+  }
+
   @Get(':threadId/messages')
   @ApiOperation({ summary: 'Get paginated messages for a thread' })
   @ApiResponse({ status: 200, description: 'Messages retrieved successfully' })

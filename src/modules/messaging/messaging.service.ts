@@ -227,6 +227,91 @@ export class MessagingService {
     });
   }
 
+  async getUnreadCount(userId: string) {
+    // Get all threads the user is a participant of
+    const participants = await this.prisma.groupThreadParticipant.findMany({
+      where: {
+        userId,
+        leftAt: null,
+      },
+      select: {
+        threadId: true,
+        lastReadAt: true,
+      },
+    });
+
+    if (participants.length === 0) {
+      return { unreadCount: 0 };
+    }
+
+    // Count unread messages across all threads
+    let totalUnread = 0;
+
+    for (const participant of participants) {
+      const count = await this.prisma.message.count({
+        where: {
+          threadId: participant.threadId,
+          senderId: { not: userId },
+          deletedAt: null,
+          createdAt: participant.lastReadAt
+            ? { gt: participant.lastReadAt }
+            : undefined,
+        },
+      });
+      totalUnread += count;
+    }
+
+    return { unreadCount: totalUnread };
+  }
+
+  async getUnreadCountsByEpisode(userId: string) {
+    // Get all threads the user is a participant of with episode info
+    const participants = await this.prisma.groupThreadParticipant.findMany({
+      where: {
+        userId,
+        leftAt: null,
+      },
+      select: {
+        threadId: true,
+        lastReadAt: true,
+        thread: {
+          select: {
+            episodeId: true,
+          },
+        },
+      },
+    });
+
+    if (participants.length === 0) {
+      return { unreadByEpisode: {} };
+    }
+
+    // Count unread messages per episode
+    const unreadByEpisode: Record<string, number> = {};
+
+    for (const participant of participants) {
+      const episodeId = participant.thread.episodeId;
+      if (!episodeId) continue;
+
+      const count = await this.prisma.message.count({
+        where: {
+          threadId: participant.threadId,
+          senderId: { not: userId },
+          deletedAt: null,
+          createdAt: participant.lastReadAt
+            ? { gt: participant.lastReadAt }
+            : undefined,
+        },
+      });
+
+      if (count > 0) {
+        unreadByEpisode[episodeId] = count;
+      }
+    }
+
+    return { unreadByEpisode };
+  }
+
   private async verifyParticipant(threadId: string, userId: string) {
     const participant = await this.prisma.groupThreadParticipant.findUnique({
       where: { threadId_userId: { threadId, userId } },
