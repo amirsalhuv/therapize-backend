@@ -30,7 +30,7 @@ export class ExercisesController {
   @Roles(Role.THERAPIST, Role.LEAD_THERAPIST, Role.ADMIN)
   @ApiOperation({ summary: 'Create a new exercise' })
   create(@Body() dto: CreateExerciseDto, @Request() req: any) {
-    return this.exercisesService.create(dto, req.user.therapistProfile?.id);
+    return this.exercisesService.create(dto, req.user.therapistProfileId);
   }
 
   @Get()
@@ -77,13 +77,13 @@ export class ExercisesController {
   @Roles(Role.THERAPIST, Role.LEAD_THERAPIST, Role.ADMIN)
   @ApiOperation({ summary: 'Update an exercise' })
   update(@Param('id') id: string, @Body() dto: UpdateExerciseDto, @Request() req: any) {
-    return this.exercisesService.update(id, dto, req.user.therapistProfile?.id);
+    return this.exercisesService.update(id, dto, req.user.therapistProfileId);
   }
 
   @Delete(':id')
   @Roles(Role.THERAPIST, Role.LEAD_THERAPIST, Role.ADMIN)
   @ApiOperation({ summary: 'Soft delete an exercise' })
   remove(@Param('id') id: string, @Request() req: any) {
-    return this.exercisesService.remove(id, req.user.therapistProfile?.id);
+    return this.exercisesService.remove(id, req.user.therapistProfileId);
   }
 }

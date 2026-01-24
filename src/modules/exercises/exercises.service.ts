@@ -12,6 +12,45 @@ export class ExercisesService {
     private i18n: I18nService,
   ) {}
 
+  private async checkNameUniqueness(
+    name: string,
+    isLibraryExercise: boolean,
+    createdById: string,
+  ): Promise<void> {
+    if (isLibraryExercise) {
+      // Public exercise: check against all public exercises
+      const existingPublic = await this.prisma.exercise.findFirst({
+        where: {
+          name: { equals: name, mode: 'insensitive' },
+          isLibraryExercise: true,
+          isDeleted: false,
+        },
+      });
+
+      if (existingPublic) {
+        throw new BadRequestException(
+          `A public exercise with the name "${name}" already exists. Please choose a different name.`,
+        );
+      }
+    } else {
+      // Private exercise: check only creator's private exercises
+      const existingPrivate = await this.prisma.exercise.findFirst({
+        where: {
+          name: { equals: name, mode: 'insensitive' },
+          isLibraryExercise: false,
+          createdById: createdById,
+          isDeleted: false,
+        },
+      });
+
+      if (existingPrivate) {
+        throw new BadRequestException(
+          `You already have a private exercise named "${name}". Please choose a different name.`,
+        );
+      }
+    }
+  }
+
   async create(dto: CreateExerciseDto, createdById: string) {
     // Validate category if provided
     if (dto.category) {
@@ -23,25 +62,37 @@ export class ExercisesService {
       }
     }
 
+    // Check name uniqueness
+    const isLibraryExercise = dto.isLibraryExercise ?? true;
+    await this.checkNameUniqueness(dto.name, isLibraryExercise, createdById);
+
     return this.prisma.exercise.create({
       data: {
         ...dto,
         bodyParts: dto.bodyParts || [],
-        isLibraryExercise: dto.isLibraryExercise ?? true,
+        isLibraryExercise,
         createdById,
       },
     });
   }
 
   async findAll(dto: SearchExercisesDto, locale: Locale = 'EN') {
-    const { query, category, bodyParts, difficulty, libraryOnly, page = 1, limit = 20 } = dto;
+    const { query, category, bodyParts, difficulty, libraryOnly, createdById, page = 1, limit = 20 } = dto;
+
+    console.log('[ExercisesService.findAll] Received DTO:', { libraryOnly, createdById, page, limit });
 
     const where: Prisma.ExerciseWhereInput = {
       isDeleted: false,
     };
 
-    if (libraryOnly) {
-      where.isLibraryExercise = true;
+    if (libraryOnly !== undefined) {
+      console.log('[ExercisesService.findAll] Setting isLibraryExercise =', libraryOnly);
+      where.isLibraryExercise = libraryOnly;
+    }
+
+    if (createdById) {
+      console.log('[ExercisesService.findAll] Setting createdById =', createdById);
+      where.createdById = createdById;
     }
 
     if (category) {
@@ -68,6 +119,8 @@ export class ExercisesService {
 
     const skip = (page - 1) * limit;
 
+    console.log('[ExercisesService.findAll] Final where clause:', JSON.stringify(where));
+
     const [exercises, total] = await Promise.all([
       this.prisma.exercise.findMany({
         where,
@@ -77,6 +130,8 @@ export class ExercisesService {
       }),
       this.prisma.exercise.count({ where }),
     ]);
+
+    console.log(`[ExercisesService.findAll] Found ${exercises.length} exercises:`, exercises.map(e => ({ name: e.name, isLibraryExercise: e.isLibraryExercise, createdById: e.createdById })));
 
     return {
       exercises: exercises.map((ex) => this.localizeExercise(ex, locale)),

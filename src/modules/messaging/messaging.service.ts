@@ -140,7 +140,7 @@ export class MessagingService {
   }
 
   async getThreadForEpisode(episodeId: string, userId: string) {
-    const thread = await this.prisma.groupThread.findUnique({
+    let thread = await this.prisma.groupThread.findUnique({
       where: { episodeId },
       include: {
         participants: {
@@ -160,12 +160,62 @@ export class MessagingService {
       },
     });
 
+    // If thread doesn't exist, create it with the episode participants
     if (!thread) {
-      throw new NotFoundException('Thread not found for this episode');
+      thread = await this.createThreadForEpisode(episodeId);
     }
 
     await this.verifyParticipant(thread.id, userId);
     return thread;
+  }
+
+  private async createThreadForEpisode(episodeId: string) {
+    // Get episode with patient and therapist info
+    const episode = await this.prisma.programEpisode.findUnique({
+      where: { id: episodeId },
+      include: {
+        patient: { include: { user: true } },
+        therapist: { include: { user: true } },
+      },
+    });
+
+    if (!episode || !episode.patient.user || !episode.therapist.user) {
+      throw new NotFoundException('Episode or users not found');
+    }
+
+    const patientUser = episode.patient.user;
+    const therapistUser = episode.therapist.user;
+
+    // Create thread with participants
+    return this.prisma.groupThread.create({
+      data: {
+        episodeId,
+        isGroup: true,
+        name: `Care Team - ${patientUser.firstName} ${patientUser.lastName}`,
+        participants: {
+          create: [
+            { userId: patientUser.id, role: 'member' },
+            { userId: therapistUser.id, role: 'admin' },
+          ],
+        },
+      },
+      include: {
+        participants: {
+          where: { leftAt: null },
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                avatarUrl: true,
+                roles: true,
+              },
+            },
+          },
+        },
+      },
+    });
   }
 
   async markAsRead(threadId: string, userId: string) {

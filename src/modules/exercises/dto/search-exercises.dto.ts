@@ -29,10 +29,19 @@ export class SearchExercisesDto {
   difficulty?: number;
 
   @ApiPropertyOptional({ description: 'Only show library exercises' })
-  @Transform(({ value }) => value === 'true' || value === true)
+  @Transform(({ value }) => {
+    if (value === 'true' || value === true) return true;
+    if (value === 'false' || value === false) return false;
+    return undefined;
+  })
   @IsBoolean()
   @IsOptional()
   libraryOnly?: boolean;
+
+  @ApiPropertyOptional({ description: 'Filter by creator ID' })
+  @IsString()
+  @IsOptional()
+  createdById?: string;
 
   @ApiPropertyOptional({ description: 'Page number', default: 1 })
   @Type(() => Number)

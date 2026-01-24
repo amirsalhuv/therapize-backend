@@ -142,13 +142,13 @@ export class FirstSessionFormsService {
       throw new BadRequestException('Basic data is required to complete the form');
     }
 
-    if (!therapyGoals || !therapyGoals.goals) {
-      throw new BadRequestException('Therapy goals are required to complete the form');
+    if (!therapyGoals || !Array.isArray(therapyGoals.goals) || therapyGoals.goals.length === 0) {
+      throw new BadRequestException('At least one therapy goal is required to complete the form');
     }
 
-    if (!initialProgram?.exercises || initialProgram.exercises.length < 2) {
+    if (!initialProgram?.exercises || !Array.isArray(initialProgram.exercises) || initialProgram.exercises.length < 1) {
       throw new BadRequestException(
-        'At least 2-3 exercises are required to complete the first session form'
+        'At least one exercise is required to complete the first session form'
       );
     }
 

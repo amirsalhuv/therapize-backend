@@ -447,6 +447,7 @@ model ProgramEpisode {
   groupThread           GroupThread?
   firstSessionForm      FirstSessionForm?
   milestones            EpisodeMilestone[]
+  clinicalNotes         ClinicalNote[]
 
   @@index([patientId])
   @@index([therapistId])
@@ -1188,6 +1189,37 @@ model MagicLinkToken {
 
   @@index([token])
   @@map("magic_link_tokens")
+}
+
+// ============================================
+// CLINICAL NOTES
+// ============================================
+
+enum ClinicalNoteType {
+  PROGRESS_NOTE
+  SOAP_NOTE
+  DISCHARGE_NOTE
+  GENERAL
+}
+
+model ClinicalNote {
+  id                    String            @id @default(uuid())
+  episodeId             String            @map("episode_id")
+  therapistId           String            @map("therapist_id")
+  title                 String
+  content               String
+  noteType              ClinicalNoteType  @default(GENERAL) @map("note_type")
+
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+  deletedAt             DateTime?         @map("deleted_at")
+
+  // Relations
+  episode               ProgramEpisode    @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@index([episodeId])
+  @@index([therapistId])
+  @@map("clinical_notes")
 }
 
 // ============================================

@@ -19,6 +19,7 @@ import { MessagingModule } from './modules/messaging/messaging.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { ExercisesModule } from './modules/exercises/exercises.module';
 import { PatientPlansModule } from './modules/patient-plans/patient-plans.module';
+import { NotesModule } from './modules/notes/notes.module';
 import { JwtAuthGuard, RolesGuard } from './modules/auth/guards';
 
 @Module({
@@ -47,6 +48,7 @@ import { JwtAuthGuard, RolesGuard } from './modules/auth/guards';
     UploadsModule,
     ExercisesModule,
     PatientPlansModule,
+    NotesModule,
   ],
   controllers: [],
   providers: [
