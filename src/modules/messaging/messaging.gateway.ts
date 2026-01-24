@@ -85,6 +85,7 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
     @MessageBody() data: { threadId: string },
   ) {
     if (!client.user) {
+      this.logger.warn('joinThread: Unauthorized client');
       return { error: 'Unauthorized' };
     }
 
@@ -97,6 +98,7 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
 
       return { success: true, threadId: data.threadId };
     } catch (error) {
+      this.logger.error(`joinThread error for user ${client.user.id}: ${error.message}`);
       return { error: error.message };
     }
   }
@@ -124,9 +126,11 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
 
       // Broadcast to all participants in the thread
       this.server.to(`thread:${data.threadId}`).emit('newMessage', message);
+      this.logger.log(`Message sent to thread ${data.threadId} by user ${client.user.id}`);
 
       return { success: true, message };
     } catch (error) {
+      this.logger.error(`sendMessage error: ${error.message}`);
       return { error: error.message };
     }
   }

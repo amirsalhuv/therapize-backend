@@ -11,13 +11,17 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { MessagingService } from './messaging.service';
+import { MessagingGateway } from './messaging.gateway';
 import { CreateMessageDto, GetMessagesQueryDto } from './dto';
 
 @ApiTags('messaging')
 @ApiBearerAuth()
 @Controller('api/v1/threads')
 export class MessagingController {
-  constructor(private messagingService: MessagingService) {}
+  constructor(
+    private messagingService: MessagingService,
+    private messagingGateway: MessagingGateway,
+  ) {}
 
   @Get(':threadId/messages')
   @ApiOperation({ summary: 'Get paginated messages for a thread' })
@@ -38,10 +42,15 @@ export class MessagingController {
     @Body() dto: Omit<CreateMessageDto, 'threadId'>,
     @Request() req,
   ) {
-    return this.messagingService.createMessage(req.user.id, {
+    const message = await this.messagingService.createMessage(req.user.id, {
       ...dto,
       threadId,
     });
+
+    // Broadcast to all WebSocket clients in the thread room
+    this.messagingGateway.server.to(`thread:${threadId}`).emit('newMessage', message);
+
+    return message;
   }
 
   @Delete('messages/:messageId')
