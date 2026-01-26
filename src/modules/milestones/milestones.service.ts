@@ -158,6 +158,28 @@ export class MilestonesService {
     });
   }
 
+  async completeBaselineAssessment(episodeId: string) {
+    const milestone = await this.prisma.episodeMilestone.findFirst({
+      where: {
+        episodeId,
+        type: MilestoneType.BASELINE_ASSESSMENT,
+        status: MilestoneStatus.PENDING,
+      },
+    });
+
+    if (!milestone) {
+      return null;
+    }
+
+    return this.prisma.episodeMilestone.update({
+      where: { id: milestone.id },
+      data: {
+        status: MilestoneStatus.COMPLETED,
+        completedAt: new Date(),
+      },
+    });
+  }
+
   async initializeEpisodeMilestones(episodeId: string) {
     const episode = await this.prisma.programEpisode.findUnique({
       where: { id: episodeId },

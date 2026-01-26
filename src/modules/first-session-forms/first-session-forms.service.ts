@@ -7,10 +7,14 @@ import {
 import { PrismaService } from '../../database/prisma.service';
 import { CreateFirstSessionFormDto, UpdateFirstSessionFormDto, UpdateGoalsDto } from './dto';
 import { FirstSessionFormStatus } from '@prisma/client';
+import { MilestonesService } from '../milestones/milestones.service';
 
 @Injectable()
 export class FirstSessionFormsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private milestonesService: MilestonesService,
+  ) {}
 
   async create(dto: CreateFirstSessionFormDto, therapistId: string) {
     // Verify episode exists and belongs to therapist
@@ -227,6 +231,9 @@ export class FirstSessionFormsService {
         },
       },
     });
+
+    // Complete the baseline assessment milestone
+    await this.milestonesService.completeBaselineAssessment(form.episodeId);
 
     return updatedForm;
   }
